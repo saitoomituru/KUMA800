@@ -1,115 +1,117 @@
 # KUMA800
 
-**KUMA800** is an experimental MCP server for turning official bear-sighting open data into traceable, locally usable safety information for AI agents and humans.
+**KUMA800** は、行政が公開するクマ出没情報を、利用者の手元で動くMCPサーバーから取得・検証し、出典をたどれる安全情報として扱うための国内向けオープンソース計画です。
 
-The initial target is **Yamagata Prefecture, Japan**.
+最初の対象地域は **山形県** です。
 
-> Safety infrastructure should not erase uncertain information. It should carry source, freshness, location, and uncertainty to the user.
+> 安全装置は、不確実な情報を消す壁ではなく、出典・鮮度・位置・不確実性を利用者まで運ぶ道具である。
 
-## Status
+## 現在地
 
-**Season 0: architecture and implementation planning**
+**シーズン0：技術選定と実装方針の決定**
 
-KUMA800 is currently in the design phase. The runtime, language, MCP SDK, storage strategy, update mechanism, geospatial model, and security boundaries have not yet been finalized.
+KUMA800は現在、設計段階です。実装言語、対応実行環境、MCP用ライブラリ、保存方式、更新方法、地理情報の扱い、信頼境界はまだ確定していません。
 
-No production safety guarantee is provided at this stage.
+現時点では、実運用上の安全を保証する完成品ではありません。
 
-## Why KUMA800 exists
+## KUMA800が必要な理由
 
-Official bear-sighting information exists, but it is fragmented across municipal websites, PDFs, KML/KMZ files, map platforms, and public applications.
+行政のクマ出没情報は存在しますが、自治体サイト、PDF、KML/KMZ、地図サービス、公開アプリなどに分散しています。
 
-General-purpose AI can also confuse two different kinds of caution:
+さらに一般AIは、次の二つを混同することがあります。
 
-- caution about legal or political claims;
-- caution about immediate physical danger.
+- 法務・政治・係争に関する断定を控えること
+- 生命や身体に関わる物理的危険を、一次資料から慎重に確認すること
 
-When physical-risk data is hidden, weakened, or discarded merely because it is local, incomplete, or sensitive, the system may become less safe rather than more safe.
+地域情報が不完全、局所的、またはセンシティブであるという理由だけで薄められたり削除されたりすると、安全側ではなく危険側へ倒れることがあります。
 
-KUMA800 aims to provide a small, inspectable, open-source bridge between official data and user-controlled AI agents.
+KUMA800は、行政の公開情報と、利用者が管理するAIエージェントの間に、小さく、検査可能で、出典をたどれる橋を置くことを目的とします。
 
-## Current confirmed source shape
+## 現在確認できている山形県データの形
 
-A currently confirmed Yamagata dataset is published through Google My Maps in two layers:
+現時点で確認できている山形県のデータは、Google マイマップを通じて次の二層構造で公開されています。
 
-1. **Symbolic KML**
-   - contains a KML `NetworkLink`;
-   - points to a public Google My Maps KML endpoint;
-   - contains no sighting `Placemark` records itself.
+1. **参照用KML**
+   - KMLの `NetworkLink` を含む
+   - 公開されたGoogle マイマップのKML取得先を指す
+   - 参照用KML自体には、目撃地点の `Placemark` 本体を持たない
 
-2. **KMZ payload**
-   - contains the materialized map data;
-   - includes `doc.kml` and map icon assets;
-   - the inspected R7 sample contains 3,092 `Placemark` elements.
+2. **KMZ実体**
+   - 展開後の地図データ本体を含む
+   - `doc.kml` と地図用アイコン等を含む
+   - 提供された令和7年度試料では、3,092件の `Placemark` を確認した
 
-Current symbolic endpoint discovered from the supplied official KML:
+提供された公式KMLから確認した参照先は次の通りです。
 
 ```text
 https://www.google.com/maps/d/kml?forcekml=1&mid=1N9E9rixBQwxB4TKQ2XsP32GLOi6w6qQ
 ```
 
-This repository does not treat the Google platform, the link target, the downloaded archive, or the parsed records as implicitly trusted.
+KUMA800は、Googleの基盤、参照先URL、取得したKMZ、展開後のKML、解析済みレコードのどれも無条件には信頼しません。
 
-## Zero-trust interpretation
+## ゼロトラストの意味
 
-For KUMA800, “zero trust” does not mean refusing to use public data. It means verifying every boundary.
+KUMA800におけるゼロトラストは、公開データを使わないことではありません。
 
-The Season 1 fetch pipeline should, at minimum:
+**取得経路の境界ごとに検証すること**を意味します。
 
-1. load the known symbolic KML;
-2. parse the `NetworkLink` without executing arbitrary XML features;
-3. validate the URL scheme and expected host policy;
-4. fetch with explicit timeout, size, redirect, and content-type limits;
-5. preserve retrieval time, final URL, headers, and content hash;
-6. verify that the result is a valid KML or KMZ container;
-7. reject path traversal, decompression bombs, malformed XML, and external entity expansion;
-8. parse records into a normalized internal schema;
-9. keep the original source reference and raw evidence linkage;
-10. report stale, missing, ambiguous, or partially parsed data instead of converting absence into safety.
+シーズン1の取得処理では、最低限、次を行います。
 
-## Roadmap
+1. 既知の参照用KMLを読み込む
+2. 任意のXML機能を実行せずに `NetworkLink` を解析する
+3. URL方式と接続先の許可方針を検証する
+4. 通信時間、取得容量、転送回数、内容種別に上限を設けて取得する
+5. 取得日時、最終URL、応答ヘッダー、内容ハッシュを保存する
+6. 取得物が正しいKMLまたはKMZであるか確認する
+7. パストラバーサル、展開爆弾、不正XML、外部実体参照を拒否する
+8. レコードを内部の共通形式へ正規化する
+9. 原典URLと元データへ戻れる参照を保持する
+10. 古い、欠けている、曖昧、一部しか解析できない情報を、安全情報へ変換せず、そのまま明示する
 
-### Season 0: Forge the architecture
+## 開発段階
 
-Goal: decide the technical stack and implementation policy before declaring a stable interface.
+### シーズン0：技術選定と実装方針の決定
 
-Topics under evaluation:
+目的は、安定した外部仕様を宣言する前に、技術構成と責任分界を決めることです。
 
-- implementation language and supported runtimes;
-- official MCP SDK and transport choice;
-- local-only execution versus optional remote components;
-- KML/KMZ and geospatial parsing libraries;
-- normalized event schema;
-- cache, snapshot, and provenance storage;
-- update polling and diff strategy;
-- source allow-list and redirect policy;
-- XML, archive, and decompression hardening;
-- offline behavior;
-- privacy modes for public facilities and private residences;
-- test fixtures and reproducible source snapshots;
-- risk-ranking boundaries and non-goals.
+検討対象：
 
-Season 0 deliverables:
+- 実装言語と対応実行環境
+- MCP用ライブラリと通信方式
+- 利用者端末内だけで動かす範囲と、外部機能を許す場合の境界
+- KML/KMZと地理情報の解析ライブラリ
+- 出没情報の共通レコード形式
+- キャッシュ、取得時点保存、出典履歴の持ち方
+- 更新確認と差分取得
+- 接続先許可一覧と転送先検証
+- XML、圧縮書庫、展開処理の防御
+- オフライン時の動作
+- 公開施設と個人宅を分けるプライバシー設定
+- 再現可能な試験データの扱い
+- 危険度評価の射程と、しないこと
 
-- [ ] architecture decision records;
-- [ ] threat model;
-- [ ] source and record schema;
-- [ ] MCP tool draft;
-- [ ] minimal parser spike for the supplied symbolic KML and KMZ;
-- [ ] fixture policy that respects upstream data terms;
-- [ ] Season 1 acceptance tests.
+成果物：
 
-### Season 1: Current Yamagata open data
+- [ ] 設計判断記録
+- [ ] 脅威モデル
+- [ ] 情報源とレコードの共通形式
+- [ ] MCP機能案
+- [ ] 参照用KMLとKMZを読む最小試作
+- [ ] 上流データの利用条件を守る試験データ方針
+- [ ] シーズン1の受け入れ試験
 
-Goal: allow a user-controlled local MCP server to retrieve current official Yamagata bear-sighting open data through a zero-trust pipeline.
+### シーズン1：山形県の現在データ
 
-Minimum current requirement:
+目的は、利用者が管理する手元のMCPサーバーから、山形県の現在の公式クマ出没情報をゼロトラストで取得できるようにすることです。
 
-- accept or fetch the known symbolic KML;
-- resolve its Google My Maps `NetworkLink` under an explicit policy;
-- retrieve and validate the materialized KML/KMZ data;
-- expose traceable sighting records through MCP.
+現時点の最低要件：
 
-Candidate MCP tools:
+- 既知の参照用KMLを入力または取得できる
+- 明示した接続先方針のもとでGoogle マイマップの `NetworkLink` を解決する
+- KML/KMZ実体を取得して検証する
+- 出典をたどれる目撃情報をMCPから返す
+
+MCP機能候補：
 
 - `kuma.sources.list`
 - `kuma.source.inspect`
@@ -118,139 +120,151 @@ Candidate MCP tools:
 - `kuma.data.freshness`
 - `kuma.data.quality`
 
-Season 1 acceptance direction:
+ここでの識別子は機械インターフェース名であり、文書全体を英語化する理由にはしません。
 
-- [ ] every returned record can be traced to a source;
-- [ ] retrieval and observation times are not conflated;
-- [ ] malformed or unexpected payloads fail closed without erasing the last known valid snapshot;
-- [ ] no sighting result is never represented as proof that no bear exists;
-- [ ] the server runs on infrastructure controlled by the user;
-- [ ] no mandatory proprietary AI or hosted database dependency.
+受け入れ条件の方向性：
 
-### Season 2: Multi-year history
+- [ ] 返した全レコードから原典をたどれる
+- [ ] 取得日時と目撃日時を混同しない
+- [ ] 壊れた取得物や想定外形式を拒否しても、直前の正常な保存物を消さない
+- [ ] 検索結果が0件であることを「クマがいない証明」にしない
+- [ ] 利用者が管理する機器上で動作する
+- [ ] 特定企業の生成AIや外部データベースを必須依存にしない
 
-Goal: make multiple years of official historical records queryable from open data.
+### シーズン2：複数年度の過去ログ
 
-Planned work:
+目的は、公開されている複数年度の過去情報を検索・比較できるようにすることです。
 
-- source adapters for annual datasets;
-- cross-year schema normalization;
-- duplicate and correction handling;
-- snapshot provenance and hashes;
-- time-range and year-based MCP queries;
-- explicit handling of boundary, field, and reporting-rule changes;
-- comparison tools that distinguish raw counts from changes in collection practice.
+予定：
 
-Possible tools:
+- 年度別データを読む情報源アダプタ
+- 年度をまたいだ項目の正規化
+- 重複、訂正、差し替えの扱い
+- 取得時点保存と内容ハッシュ
+- 期間・年度指定の検索
+- 行政区画、項目、集計方法の変更を明示する仕組み
+- 単純件数と、収集方法の変更を分けて比較する機能
+
+機能候補：
 
 - `kuma.history.search`
 - `kuma.history.compare`
 - `kuma.source.revisions`
 
-### Season 3: Other prefectures
+### シーズン3：他都道府県への拡張
 
-Goal: expand beyond Yamagata without forcing every prefecture into a false single format.
+目的は、山形県以外へ広げつつ、各都道府県の公開形式や運用差を無理に一つへ潰さないことです。
 
-The likely architecture is a shared core plus prefecture or municipality adapters:
-
-```text
-KUMA800 Core
-├── normalized schema
-├── provenance and validation
-├── MCP tools
-└── source adapters
-    ├── yamagata
-    ├── miyagi
-    ├── fukushima
-    └── ...
-```
-
-Season 3 should preserve regional differences while exposing a common minimum interface. A future generic package may evolve into a broader `jp-wildlife-mcp`, but that is not a Season 1 requirement.
-
-## Tentative record model
-
-The internal record model may include:
+想定構成：
 
 ```text
-source_id
-source_url
-publisher
-retrieved_at
-published_at
-observed_at
-location_text
-latitude
-longitude
-geometry_precision
-observation_type
-animal_count
-raw_description
-source_record_id
-content_hash
-parse_confidence
+KUMA800共通部
+├── 共通レコード形式
+├── 出典保持と検証
+├── MCP機能
+└── 情報源アダプタ
+    ├── 山形県
+    ├── 宮城県
+    ├── 福島県
+    └── その他
 ```
 
-The schema remains provisional during Season 0.
+シーズン3でも国内向けツールであることは変わりません。全国対応は英語圏向け製品化を意味せず、日本国内の自治体差を吸収する射程拡張です。
 
-## Non-goals
+将来、野生動物全般を扱う共通部へ広がる可能性はありますが、それはシーズン1の要件ではありません。
 
-KUMA800 is not intended to:
+## 仮のレコード項目
 
-- guarantee that an area is bear-free;
-- replace emergency services, municipalities, wildlife specialists, or field judgment;
-- identify or track individual animals without a reliable official basis;
-- issue autonomous capture or confrontation instructions;
-- hide official location data merely because it is geographically precise;
-- publish private-residence information without an appropriate privacy policy;
-- convert legal disclaimers into a reason to suppress physical-risk evidence.
+内部レコードには、次のような項目を持たせる可能性があります。
 
-## Data and licensing boundary
+```text
+情報源ID
+情報源URL
+公開主体
+取得日時
+公開日時
+目撃日時
+場所表記
+緯度
+経度
+位置精度
+観測種別
+個体数
+原文
+原典内ID
+内容ハッシュ
+解析確度
+```
 
-The **KUMA800 source code** is licensed under the Apache License 2.0.
+実際のコード上の識別子は、利用ライブラリや相互運用性を考慮して英数字になる場合があります。ただし、日本語の正本仕様と意味対応を失わないことを優先します。
 
-Upstream government data, Google My Maps content, KML/KMZ files, map imagery, icons, and third-party datasets retain their own terms and attribution requirements. Apache-2.0 for this repository does not relicense upstream data.
+この共通形式はシーズン0の間は未確定です。
 
-Before redistributing fixtures or snapshots, confirm the applicable source terms. Tests may use minimized, synthetic, hashed, or metadata-only fixtures where full redistribution is not appropriate.
+## KUMA800がしないこと
 
-## Security
+KUMA800は、次を目的にしません。
 
-KML and KMZ are untrusted input formats.
+- クマが存在しないことの保証
+- 警察、消防、自治体、野生動物の専門家、現場判断の代替
+- 信頼できる公式根拠なしに個体を特定・追跡すること
+- 捕獲や対峙を自動指示すること
+- 位置が細かいという理由だけで公式情報を消すこと
+- 適切な方針なしに一般の個人宅情報を公開すること
+- 免責文を、物理的危険の証拠を隠す理由へ変換すること
 
-Relevant threats include:
+## データとライセンスの境界
 
-- XML external entities;
-- entity expansion;
-- archive path traversal;
-- decompression bombs;
-- oversized coordinates or descriptions;
-- unexpected redirects;
-- stale or silently replaced map resources;
-- schema drift;
-- duplicate or corrected observations;
-- maliciously crafted local files.
+**KUMA800のソースコード**は Apache License 2.0 で公開します。
 
-Security decisions and parser limits will be documented during Season 0.
+行政データ、Google マイマップ上の内容、KML/KMZ、地図画像、アイコン、第三者データには、それぞれの利用条件と表示条件があります。
 
-## Contributing
+KUMA800がApache 2.0であることは、上流データをApache 2.0へ変更することを意味しません。
 
-The project is currently collecting architecture proposals, source discoveries, parser experiments, threat-model notes, and implementation candidates.
+取得物や試験用保存物を再配布する前に、情報源ごとの条件を確認します。完全な再配布が適切でない場合、試験には縮小データ、合成データ、ハッシュ、項目情報だけを使います。
 
-Useful contributions include:
+## 安全対策
 
-- verified official source URLs;
-- sample schemas and field mappings;
-- safe KML/KMZ parser evaluations;
-- MCP SDK comparisons;
-- geospatial indexing experiments;
-- reproducible failure cases;
-- accessibility and offline-use requirements.
+KMLとKMZは、信頼できない入力として扱います。
 
-Please keep claims traceable. Separate confirmed behavior, inference, and proposal.
+想定する危険：
 
-## License
+- XML外部実体参照
+- 実体展開による資源枯渇
+- 圧縮書庫内のパストラバーサル
+- 展開爆弾
+- 極端に長い座標列や説明文
+- 想定外の転送先
+- 古いまま残る、または無言で差し替えられる地図データ
+- 項目構造の変更
+- 重複または訂正された目撃情報
+- 細工されたローカルファイル
 
-Apache License 2.0. See [`LICENSE`](LICENSE).
+具体的な制限値と解析方針は、シーズン0の設計判断記録へ残します。
+
+## 参加方法
+
+現在は、技術構成案、公式情報源の発見、解析実験、脅威モデル、実装候補を集める段階です。
+
+役立つ貢献：
+
+- 確認済みの自治体公式URL
+- 項目対応表と共通形式案
+- KML/KMZ解析ライブラリの安全性評価
+- MCP用ライブラリの比較
+- 地理検索方式の実験
+- 再現可能な失敗例
+- 読み上げ、見やすさ、オフライン利用の要件
+
+主張には原典を付け、確認済みの事実、推定、提案を分けてください。
+
+作業前に [`AGENTS.md`](AGENTS.md) を読み、実験記録は [`note/`](note/) の規約に従ってください。
+
+## ライセンス
+
+Apache License 2.0。詳細は [`LICENSE`](LICENSE) を参照してください。
 
 ---
 
-KUMA800 begins with Yamagata, a symbolic KML, and one stubborn requirement: **do not let an AI burn the map that protects the user’s HP and Life.**
+KUMA800は、山形県の参照用KMLと、ひとつの頑固な要件から始まります。
+
+**利用者の尻・HP・Lifeを守る地図を、AIの過剰配慮で焼却させない。**
