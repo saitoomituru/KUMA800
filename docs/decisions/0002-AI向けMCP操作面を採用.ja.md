@@ -174,8 +174,11 @@ AIは定型toolだけでなく、観測の比較・集計・調査に必要なSQ
 ### append-only観測
 
 - scraper ingestは新規観測と新規状態を追記する。
-- 既存観測の訂正は、置換先を`supersedes`で結ぶ。
-- 誤報・取消は、元観測を削除せず`invalidates`関係と理由を追記する。
+- 既存観測の訂正は、上流で訂正データを取得できた場合に、置換先を`supersedes`で結ぶ。
+- 誤報・取消は、上流で誤報・取消データを取得できた場合に、元観測を削除せず`invalidates`関係、理由、訂正元URL、fetch runを追記する。
+- AIは訂正、誤報、取消、`invalidates`を作成できない。それらもscraper ingestだけが書き込む。
+- 前回snapshotに存在したレコードが次回消えただけの場合は、誤報と推定せず`no_longer_present` assertionを追記する。
+- 別sourceが矛盾する内容を返した場合は、一方を焼却せず双方を保存して`contradicts`候補で結ぶ。
 - scraperをOFF、隔離、削除しても、そのscraperが過去に取得した観測とfetch logは残す。
 - retentionや容量整理が必要な場合も、AIの自由判断で行わず、別の人間管理operationとして設計判断を要求する。
 

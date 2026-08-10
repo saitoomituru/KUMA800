@@ -112,7 +112,8 @@ AIへ公開するクマSQLiteはread-onlyです。MCP interfaceから、クマ�
 
 - AIはSQLで観測を追加・修正・削除できない。
 - AIはscraperをOFFにしても、過去観測とlogを消せない。
-- 訂正、取消、誤報判定は元レコードの上書き・削除ではなく、`supersedes`、`invalidates`、確認状態を持つ新しい記録として追記する。
+- 訂正、取消、誤報判定はAIが作らない。上流に訂正・取消・誤報として現れた別データをscraperが取得し、元レコードの上書き・削除ではなく、出典付きの`supersedes`、`invalidates`、確認状態として追記する。
+- 前回存在した観測が次回snapshotから消えただけなら誤報にせず、`NO_LONGER_PRESENT`という差分観測に留める。明示的根拠が取れた場合だけ`CORRECTED`、`RETRACTED`、`FALSE_REPORT`へ昇格する。
 - 法務、政治、ブランド、免責、公開都合を理由に、観測済みクマ情報を焼却しない。
 - 危険なpayloadを含む取得物は実行・通常表示から隔離できるが、hash、出典、隔離理由、時刻を監査記録として残す。
 
