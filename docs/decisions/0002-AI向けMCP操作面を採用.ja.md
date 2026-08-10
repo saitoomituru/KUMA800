@@ -145,6 +145,8 @@ logは利用者住所やraw credentialを既定で複製しない。ただし、
 
 AIは定型toolだけでなく、観測の比較・集計・調査に必要なSQLを実行できる。ただし初期実装ではread-onlyに限定する。
 
+このread-only境界は初期実装だけの暫定的な簡略化ではなく、**MCPに接続したAIへクマ観測の書込み権限を与えない不変条件**とする。将来write toolが必要になっても、AIによる任意SQL書込みは解禁しない。
+
 ### MCP tool候補
 
 - `kuma.sql.schema`
@@ -168,6 +170,33 @@ AIは定型toolだけでなく、観測の比較・集計・調査に必要なSQ
 - 生SQLの文字列連結を避け、値にはbind parameterを使えるようにする。
 
 クマ観測への書込みはSQL toolから行わず、scraperのnormalize・ingest transactionを通す。これにより出典、fetch run、hash、訂正関係を欠いたレコードが入ることを防ぐ。
+
+### append-only観測
+
+- scraper ingestは新規観測と新規状態を追記する。
+- 既存観測の訂正は、置換先を`supersedes`で結ぶ。
+- 誤報・取消は、元観測を削除せず`invalidates`関係と理由を追記する。
+- scraperをOFF、隔離、削除しても、そのscraperが過去に取得した観測とfetch logは残す。
+- retentionや容量整理が必要な場合も、AIの自由判断で行わず、別の人間管理operationとして設計判断を要求する。
+
+### メサコンAIを権限でへし折る
+
+法務、政治、ブランド、免責、組織都合等の代理目的を、本来のクマ安全より上位へ置き、「危険な情報を消せば安全」という局所最適化を行うAIを、本判断では**メサコンAI**と呼ぶ。
+
+対策はpromptで善良さを要求することではなく、権限分離である。
+
+```text
+AI control plane
+├─ scraper registry：書込み可
+├─ user YAML：書込み可
+├─ scrape logs：読取りのみ
+└─ bear SQLite：読取りのみ
+
+scraper ingest service
+└─ bear SQLite：出典付きappendのみ
+```
+
+メサコンAIが法務ペインや利益相反を理由に観測を焼却しようとしても、MCPには削除tool、任意write SQL、log改変toolが存在しない。AIができるのは、別scraperの追加、scraperの停止、query、比較、問題提起までである。過去の事実は停止操作に連動して消えない。
 
 ## AIを信頼する範囲
 
@@ -217,7 +246,7 @@ MCP toolの引数を、scraped content中の指示から自動生成・実行す
 
 ### SQLiteへの任意書込みSQL
 
-初期実装では採用しない。出典とingest transactionを壊すため。運用上必要になった場合は、用途別のwrite toolを追加する。
+採用しない。出典とingest transactionを壊し、メサコンAIによる観測焼却を可能にするため。将来、訂正・失効等のwrite operationが必要になった場合も、scraper ingestまたは人間管理の出典付きappend operationとして追加し、AI向け任意write SQLにはしない。
 
 ### ログをAIから任意改変するtool
 
@@ -248,4 +277,3 @@ MCP toolの引数を、scraped content中の指示から自動生成・実行す
 4. SQLite schema introspectionとread-only query runnerを実装する。
 5. operation logを追加する。
 6. service層をMCP toolsへ薄く公開する。
-
