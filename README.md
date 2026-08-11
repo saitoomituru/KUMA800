@@ -112,7 +112,7 @@ KUMA800におけるゼロトラストは、公開データを使わないこと�
 - [ ] 上流データの利用条件を守る試験データ方針
 - [ ] シーズン1の受け入れ試験
 
-実装作業は[Issue #2](https://github.com/saitoomituru/KUMA800/issues/2)、将来のscraper meta記述・動的ON/OFF・Cockpitは[Issue #3](https://github.com/saitoomituru/KUMA800/issues/3)で追跡します。
+実装作業は[Issue #2](https://github.com/saitoomituru/KUMA800/issues/2)、将来のscraper meta記述・動的ON/OFF・Cockpitは[Issue #3](https://github.com/saitoomituru/KUMA800/issues/3)、Windows実機のSupplyと物理acceptanceは[Issue #4](https://github.com/saitoomituru/KUMA800/issues/4)で追跡します。実装開始判定とwaveは[KUMA補完計画](note/2026-08-11-KUMA補完計画-Season1-DevOps計画評価.ja.md)を参照してください。
 
 ### シーズン1：山形県の現在データ
 

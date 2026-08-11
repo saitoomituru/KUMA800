@@ -100,10 +100,12 @@ class ScraperAdapter(Protocol):
     scraper_id: str
     version: str
 
-    async def discover(self, context: ScrapeContext) -> list[FetchRequest]: ...
-    async def parse(self, artifact: RawArtifact) -> list[SourceRecord]: ...
-    async def normalize(self, record: SourceRecord) -> CandidateObservation: ...
+    def discover(self, context: ScrapeContext) -> list[FetchRequest]: ...
+    def parse(self, artifact: RawArtifact) -> list[SourceRecord]: ...
+    def normalize(self, record: SourceRecord) -> CandidateObservation: ...
 ```
+
+Hueyはfull asyncio pipelineをfirst-classには扱わないため、Season 1のworker-facing adapterは同期protocolとする。FastMCPのasync requestはscraping完了を待たず、同期taskをenqueueしてrun IDを返す。将来async-native sourceが必要になった場合は、event loop、timeout、例外伝播を所有する明示的な`AsyncScraperBridge`を別Vesselとして追加する。
 
 URL取得、timeout、redirect、Content-Type、容量上限、内容hashはadapter自身ではなくcore fetcherが強制する。将来の宣言的scraper記述も、同じ`FetchRequest`、`SourceRecord`、`CandidateObservation`へcompileする。
 
@@ -167,7 +169,7 @@ Season 1では保留する。最初は一つのHuey consumer配下でthread work
 ## 不明点
 
 - macOSとWindowsで採用するservice manager adapter。
-- Hueyの採用versionとPython 3.12／3.13／Windowsでのprocess mode実機結果。
+- Hueyの採用versionとPython 3.12／3.13／Windowsでのthread mode実機結果。macOSのprocess modeは比較probeに留める。
 - shutdown中task、lease timeout、stale判定時間の具体値。
 - raw artifactの保存量、暗号化、retention。
 - SQLite write競合が専用writerを必要とする閾値。
@@ -194,4 +196,5 @@ Season 1では保留する。最初は一つのHuey consumer配下でthread work
 
 - Season 1のvertical slice：[Issue #2](https://github.com/saitoomituru/KUMA800/issues/2)
 - Season 3のscraper meta記述・動的運用・Cockpit：[Issue #3](https://github.com/saitoomituru/KUMA800/issues/3)
+- Windows実機のSupplyと物理acceptance：[Issue #4](https://github.com/saitoomituru/KUMA800/issues/4)
 - PayToGate・公共調達・データ独占の慢性調査：[Issue #1](https://github.com/saitoomituru/KUMA800/issues/1)。重要な周辺課題だが、本architectureの実装blockerにはしない。
