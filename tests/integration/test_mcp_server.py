@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
 
 from kuma800.mcp_server import create_server
 from kuma800.runtime import RuntimePaths
@@ -48,6 +49,10 @@ async def test_mcp_tools_keep_observations_read_only_and_users_writable(tmp_path
             "task_id": "task-1",
             "status": "QUEUED",
         }
+        assert queued == ["dummy-kuma"]
+
+        with pytest.raises(ToolError, match="unknown scraper source"):
+            await client.call_tool("kuma.scrape.request", {"source_id": "villain-source"})
         assert queued == ["dummy-kuma"]
 
         inserted = await client.call_tool(

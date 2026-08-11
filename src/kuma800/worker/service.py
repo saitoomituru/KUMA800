@@ -27,6 +27,11 @@ def _adapters() -> dict[str, ScraperAdapter]:
     return {dummy.source.source_id: dummy}
 
 
+def available_source_ids() -> tuple[str, ...]:
+    """静的registryにあるsource IDを安定順で返す。"""
+    return tuple(sorted(_adapters()))
+
+
 def execute_scrape(
     source_id: str,
     *,

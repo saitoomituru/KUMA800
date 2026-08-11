@@ -12,6 +12,7 @@ from fastmcp import FastMCP
 from kuma800.runtime import RuntimePaths
 from kuma800.storage import observation_status, recent_fetch_runs, recent_sightings
 from kuma800.user_config import UserLocation, UserLocationStore
+from kuma800.worker import available_source_ids
 
 EnqueueSource = Callable[[str], str]
 
@@ -68,6 +69,8 @@ def create_server(
     @server.tool(name="kuma.scrape.request")
     def scrape_request(source_id: str) -> dict[str, str]:
         """別Huey workerへscrapeを依頼し、待たずにtask IDを返す。"""
+        if source_id not in available_source_ids():
+            raise ValueError(f"unknown scraper source: {source_id}")
         return {"source_id": source_id, "task_id": enqueue(source_id), "status": "QUEUED"}
 
     @server.tool(name="kuma.users.list")
