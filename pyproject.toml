@@ -10,7 +10,10 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
 authors = [{ name = "ZeroRoomLab" }]
-dependencies = []
+dependencies = [
+  "platformdirs>=4.4.0,<5",
+  "PyYAML>=6.0.2,<7",
+]
 
 [dependency-groups]
 dev = [
@@ -18,6 +21,7 @@ dev = [
   "pytest>=8.4.2,<9",
   "pytest-cov>=7.0.0,<8",
   "ruff>=0.13.2,<0.14",
+  "types-PyYAML>=6.0.12.20250915,<7",
 ]
 
 [tool.uv]

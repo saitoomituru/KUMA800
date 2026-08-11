@@ -8,9 +8,9 @@
 
 ## 現在地
 
-**シーズン0：技術選定と実装方針の決定**
+**シーズン1：fake vertical sliceの実装中**
 
-KUMA800は現在、設計段階です。Python、FastMCP、Huey、SQLiteを使うSeason 1の常駐process構成まで設計判断が入りました。package、runtime、testはまだ未実装で、対応OSとservice manager adapterの実機選定も残っています。
+KUMA800は現在、Python 3.12のpackage／CI骨格、追記専用のクマ観測SQLite、出典付き冪等ingest、repository外の利用者位置YAMLまで実装済みです。FastMCP、Huey worker、fake scraper、service manager adapterは未実装で、実運用できる完成品ではありません。Season 1の進行と未決事項は[Issue #2](https://github.com/saitoomituru/KUMA800/issues/2)で追跡します。
 
 採用した構成は、クマ観測を`kuma.sqlite3`へ保存し、利用者位置をローカル`users.yaml`へ分離するものです。FastMCPはAI向けcontrol planeとread-only queryを担当し、Hueyは別service processのscheduler・queue・scraper workerを担当します。Season 1はmacOSとWindowsで使えるHueyの`thread` workerを既定とし、multiprocess非対応のWindowsへprocess worker対応を誤表示しません。AIの問い合わせ頻度と上流取得頻度を切り離し、高頻度のAI問い合わせでも上流へ同じscrapeを無駄打ちしません。保存境界は[設計判断0001](docs/decisions/0001-ローカル収集キャッシュMCP構成を採用.ja.md)、常駐process境界は[設計判断0004](docs/decisions/0004-FastMCPとHueyを常駐制御面とワーカー面に分離する.ja.md)を参照してください。
 
