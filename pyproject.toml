@@ -11,12 +11,14 @@ requires-python = ">=3.12"
 license = "Apache-2.0"
 authors = [{ name = "ZeroRoomLab" }]
 dependencies = [
+  "fastmcp==3.4.7",
   "huey>=2.5.3,<3",
   "platformdirs>=4.4.0,<5",
   "PyYAML>=6.0.2,<7",
 ]
 
 [project.scripts]
+kuma800-mcp = "kuma800.mcp_server:main"
 kuma800-worker = "kuma800.worker.cli:main"
 
 [dependency-groups]
@@ -24,6 +26,7 @@ dev = [
   "mypy>=1.18.2,<2",
   "pytest>=8.4.2,<9",
   "pytest-cov>=7.0.0,<8",
+  "pytest-asyncio>=1.2.0,<2",
   "ruff>=0.13.2,<0.14",
   "types-PyYAML>=6.0.12.20250915,<7",
 ]
@@ -44,6 +47,7 @@ strict = true
 files = ["src", "tests"]
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 addopts = [
   "--strict-config",
   "--strict-markers",

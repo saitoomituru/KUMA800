@@ -69,7 +69,12 @@ def test_huey_consumer_process_moves_queue_to_observation_store(tmp_path: Path) 
             if database_path.exists():
                 connection = sqlite3.connect(database_path)
                 try:
-                    row = connection.execute("SELECT COUNT(*) FROM sightings").fetchone()
+                    try:
+                        row = connection.execute("SELECT COUNT(*) FROM sightings").fetchone()
+                    except sqlite3.OperationalError as error:
+                        if "no such table" not in str(error):
+                            raise
+                        row = None
                 finally:
                     connection.close()
                 if row == (1,):

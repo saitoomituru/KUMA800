@@ -324,6 +324,16 @@ KUMA800_DATA_DIR=/tmp/kuma800-dev uv run --frozen kuma800-worker
 
 DUMMY-KUMAは5分間隔のscheduler smokeであり、実際のクマ情報ではありません。consumerをserviceとして登録するlaunchd／Windows adapter、停止・再起動・sleep復帰はまだ未実装です。
 
+### FastMCP control-plane
+
+別terminalで次を起動すると、loopback限定のStreamable HTTP endpointが`http://127.0.0.1:8765/mcp`に立ちます。
+
+```console
+KUMA800_DATA_DIR=/tmp/kuma800-dev uv run --frozen kuma800-mcp
+```
+
+MCPは観測状態、取得log、出典付き観測の固定read-only query、DUMMY scraperのenqueue、利用者位置YAML CRUDを公開します。任意SQL、観測UPDATE／DELETE、scrape完了待ちは公開しません。portは`KUMA800_MCP_PORT`で変更できますが、bind先は`127.0.0.1`固定です。
+
 ## ライセンス
 
 Apache License 2.0。詳細は [`LICENSE`](LICENSE) を参照してください。
