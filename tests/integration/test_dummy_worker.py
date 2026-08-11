@@ -36,6 +36,22 @@ def test_execute_scrape_is_idempotent_across_runs(tmp_path: Path) -> None:
         connection.close()
 
 
+def test_execute_scrape_preserves_requested_run_id(tmp_path: Path) -> None:
+    """MCPが先に発行したIDをfetch logの追跡IDとして保存する。"""
+    paths = RuntimePaths(tmp_path)
+
+    result = execute_scrape("dummy-kuma", paths=paths, run_id="requested-run")
+
+    assert result.run_id == "requested-run"
+    connection = sqlite3.connect(paths.observation_database)
+    try:
+        assert connection.execute(
+            "SELECT run_id, status FROM fetch_runs WHERE run_id = 'requested-run'"
+        ).fetchone() == ("requested-run", "SUCCEEDED")
+    finally:
+        connection.close()
+
+
 @pytest.mark.process_smoke
 def test_huey_consumer_process_moves_queue_to_observation_store(tmp_path: Path) -> None:
     """別processのthread consumerが永続queueからDUMMY観測を処理する。"""
@@ -45,7 +61,8 @@ def test_huey_consumer_process_moves_queue_to_observation_store(tmp_path: Path) 
         [
             sys.executable,
             "-c",
-            "from kuma800.worker.huey_app import scrape_source; scrape_source('dummy-kuma')",
+            "from kuma800.worker.huey_app import scrape_source; "
+            "scrape_source('dummy-kuma', 'process-run')",
         ],
         env=environment,
         check=False,
@@ -93,3 +110,11 @@ def test_huey_consumer_process_moves_queue_to_observation_store(tmp_path: Path) 
         except subprocess.TimeoutExpired:
             consumer.kill()
             consumer.communicate(timeout=5)
+
+    connection = sqlite3.connect(tmp_path / "kuma.sqlite3")
+    try:
+        assert connection.execute(
+            "SELECT run_id, status FROM fetch_runs WHERE run_id = 'process-run'"
+        ).fetchone() == ("process-run", "SUCCEEDED")
+    finally:
+        connection.close()

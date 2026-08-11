@@ -16,9 +16,9 @@ huey = SqliteHuey("kuma800", filename=str(paths.queue_database), results=True, u
 
 
 @huey.task()  # type: ignore[untyped-decorator]
-def scrape_source(source_id: str) -> dict[str, object]:
+def scrape_source(source_id: str, run_id: str | None = None) -> dict[str, object]:
     """指定sourceのscrapeをconsumer processで実行する。"""
-    return asdict(execute_scrape(source_id, paths=paths))
+    return asdict(execute_scrape(source_id, paths=paths, run_id=run_id))
 
 
 @huey.periodic_task(crontab(minute="*/5"))  # type: ignore[untyped-decorator]

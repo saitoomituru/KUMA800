@@ -41,6 +41,7 @@ def execute_scrape(
     *,
     paths: RuntimePaths | None = None,
     now: datetime | None = None,
+    run_id: str | None = None,
 ) -> ScrapeRunResult:
     """一つのsourceを取得し、出典付き候補を冪等appendする。"""
     resolved_paths = paths or RuntimePaths.resolve()
@@ -52,20 +53,20 @@ def execute_scrape(
     migrate_database(resolved_paths.observation_database)
     store = ObservationIngestStore(resolved_paths.observation_database)
     store.register_source(adapter.source, created_at=fetched_at)
-    run_id = store.start_fetch(source_id, started_at=fetched_at)
+    resolved_run_id = store.start_fetch(source_id, started_at=fetched_at, run_id=run_id)
     try:
         batch = adapter.fetch(fetched_at=fetched_at)
         inserted_count = sum(
             store.append_candidate(
                 candidate,
-                fetch_run_id=run_id,
+                fetch_run_id=resolved_run_id,
                 created_at=fetched_at,
             ).sighting_inserted
             for candidate in batch.candidates
         )
     except Exception as error:
         store.finish_fetch(
-            run_id,
+            resolved_run_id,
             status=FetchRunStatus.FAILED,
             finished_at=datetime.now(UTC),
             error_code=type(error).__name__,
@@ -73,14 +74,14 @@ def execute_scrape(
         raise
 
     store.finish_fetch(
-        run_id,
+        resolved_run_id,
         status=FetchRunStatus.SUCCEEDED,
         finished_at=datetime.now(UTC),
         final_url=batch.final_url,
         content_hash=batch.content_hash,
     )
     return ScrapeRunResult(
-        run_id=run_id,
+        run_id=resolved_run_id,
         source_id=source_id,
         candidate_count=len(batch.candidates),
         inserted_count=inserted_count,

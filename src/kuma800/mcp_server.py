@@ -6,6 +6,7 @@ import os
 from collections.abc import Callable
 from dataclasses import asdict
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from fastmcp import FastMCP
 
@@ -18,11 +19,12 @@ EnqueueSource = Callable[[str], str]
 
 
 def _default_enqueue(source_id: str) -> str:
-    """Huey永続queueへtaskを追加してtask IDを返す。"""
+    """Huey永続queueへtaskを追加し、将来のfetch run IDを返す。"""
     from kuma800.worker.huey_app import scrape_source
 
-    result = scrape_source(source_id)
-    return str(result.id)
+    run_id = str(uuid4())
+    scrape_source(source_id, run_id)
+    return run_id
 
 
 def _user_payload(user: UserLocation | None) -> dict[str, object] | None:
@@ -68,10 +70,10 @@ def create_server(
 
     @server.tool(name="kuma.scrape.request")
     def scrape_request(source_id: str) -> dict[str, str]:
-        """別Huey workerへscrapeを依頼し、待たずにtask IDを返す。"""
+        """別Huey workerへscrapeを依頼し、待たずにfetch run IDを返す。"""
         if source_id not in available_source_ids():
             raise ValueError(f"unknown scraper source: {source_id}")
-        return {"source_id": source_id, "task_id": enqueue(source_id), "status": "QUEUED"}
+        return {"source_id": source_id, "run_id": enqueue(source_id), "status": "QUEUED"}
 
     @server.tool(name="kuma.users.list")
     def users_list() -> list[dict[str, object]]:

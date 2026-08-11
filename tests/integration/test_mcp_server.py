@@ -46,7 +46,7 @@ async def test_mcp_tools_keep_observations_read_only_and_users_writable(tmp_path
         request = await client.call_tool("kuma.scrape.request", {"source_id": "dummy-kuma"})
         assert request.data == {
             "source_id": "dummy-kuma",
-            "task_id": "task-1",
+            "run_id": "task-1",
             "status": "QUEUED",
         }
         assert queued == ["dummy-kuma"]
