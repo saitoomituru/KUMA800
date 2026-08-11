@@ -12,7 +12,7 @@ KUMA800は、行政等が公開するクマ出没情報を、利用者の手元�
 
 現在は **シーズン0：技術選定と実装方針決定** です。
 
-- シーズン1：FastMCPと別processのHuey workerを常駐させ、静的に同梱した山形県情報源adapterをゼロトラスト取得する
+- シーズン1：FastMCPと別service processのHuey consumerを常駐させ、静的に同梱した山形県情報源adapterをゼロトラスト取得する
 - シーズン2：複数年度の公開過去ログを検索・比較できるようにする
 - シーズン3：都道府県別adapter、scraper meta記述、動的ON/OFF、Cockpitへ拡張する
 
@@ -121,13 +121,13 @@ AIへ公開するクマSQLiteはread-onlyです。MCP interfaceから、クマ�
 
 ## シーズン1最低要件
 
-FastMCPをAI向けcontrol plane、Hueyをscheduler・process workerとする兄弟service構成を入口にします。AIからのrequest transaction、定期収集、OS常駐を同じ寿命へ潰しません。
+FastMCPをAI向けcontrol plane、Hueyをscheduler・workerとする兄弟service構成を入口にします。AIからのrequest transaction、定期収集、OS常駐を同じ寿命へ潰しません。Season 1はmacOSとWindowsで共通利用できるHueyの`thread` workerを既定とし、Windowsで非対応のmultiprocess workerを必須にしません。
 
 Season 1ではadapterをrepositoryへ静的に同梱します。AIによる新規scraper install、動的ON/OFF、scraper meta記述、CockpitはSeason 3の要件であり、未実装のままSeason 1完成を妨げません。
 
 最低限、以下を検証します。
 
-- FastMCPからdurable queueを通して別processのfake scraperを実行できること
+- FastMCPからdurable queueを通して別Huey serviceのfake scraperを実行できること
 - queue DBとクマ観測DBを分け、queue再作成で観測を消さないこと
 - worker強制停止後のstale回収、冪等再実行、source単位single-flight
 - macOSとWindowsでの起動、停止、異常終了後再起動、log取得

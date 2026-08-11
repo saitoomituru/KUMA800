@@ -12,7 +12,7 @@
 
 KUMA800は現在、設計段階です。Python、FastMCP、Huey、SQLiteを使うSeason 1の常駐process構成まで設計判断が入りました。package、runtime、testはまだ未実装で、対応OSとservice manager adapterの実機選定も残っています。
 
-採用した構成は、クマ観測を`kuma.sqlite3`へ保存し、利用者位置をローカル`users.yaml`へ分離するものです。FastMCPはAI向けcontrol planeとread-only queryを担当し、Hueyは別processのscheduler・queue・scraper workerを担当します。AIの問い合わせ頻度と上流取得頻度を切り離し、高頻度のAI問い合わせでも上流へ同じscrapeを無駄打ちしません。保存境界は[設計判断0001](docs/decisions/0001-ローカル収集キャッシュMCP構成を採用.ja.md)、常駐process境界は[設計判断0004](docs/decisions/0004-FastMCPとHueyを常駐制御面とワーカー面に分離する.ja.md)を参照してください。
+採用した構成は、クマ観測を`kuma.sqlite3`へ保存し、利用者位置をローカル`users.yaml`へ分離するものです。FastMCPはAI向けcontrol planeとread-only queryを担当し、Hueyは別service processのscheduler・queue・scraper workerを担当します。Season 1はmacOSとWindowsで使えるHueyの`thread` workerを既定とし、multiprocess非対応のWindowsへprocess worker対応を誤表示しません。AIの問い合わせ頻度と上流取得頻度を切り離し、高頻度のAI問い合わせでも上流へ同じscrapeを無駄打ちしません。保存境界は[設計判断0001](docs/decisions/0001-ローカル収集キャッシュMCP構成を採用.ja.md)、常駐process境界は[設計判断0004](docs/decisions/0004-FastMCPとHueyを常駐制御面とワーカー面に分離する.ja.md)を参照してください。
 
 AI向けMCP interfaceの完成像は、scraperの設置・設定・ON/OFF、ユーザー位置YAMLの読み書き、scraping logの参照、クマSQLiteへの薄いread-only SQL queryを提供するcontrol planeです。ただしSeason 1は、静的に同梱した少数adapter、sync request、状態・logの読取り、ユーザー位置、観測queryまでに限定します。動的なscraper設置・ON/OFFとCockpitはSeason 3へ送ります。詳細は[設計判断0002](docs/decisions/0002-AI向けMCP操作面を採用.ja.md)を参照してください。
 
@@ -116,11 +116,11 @@ KUMA800におけるゼロトラストは、公開データを使わないこと�
 
 ### シーズン1：山形県の現在データ
 
-目的は、利用者が管理する手元のFastMCP serverと別processのHuey workerから、山形県の現在のクマ出没情報候補を継続取得し、出典付きで検索できるようにすることです。公式提携や公式API連携は要件にせず、情報源ごとの公開主体・取得方法・確認段階を保持します。
+目的は、利用者が管理する手元のFastMCP serverと別service processのHuey workerから、山形県の現在のクマ出没情報候補を継続取得し、出典付きで検索できるようにすることです。公式提携や公式API連携は要件にせず、情報源ごとの公開主体・取得方法・確認段階を保持します。
 
 現時点の最低要件：
 
-- FastMCPから要求したfake収集を、durable queue経由の別process workerが処理できる
+- FastMCPから要求したfake収集を、durable queue経由の別Huey serviceが処理できる
 - `queue.sqlite3`と`kuma.sqlite3`を分け、worker再起動後も観測を失わず冪等に再実行できる
 - AIはクマSQLiteへ書き込めず、登録済みscraperのcore ingestだけが出典付きでappendできる
 - 静的に同梱した最初の実adapterとして山形県CSVを接続する

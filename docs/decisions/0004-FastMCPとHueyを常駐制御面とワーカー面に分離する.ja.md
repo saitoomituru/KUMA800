@@ -1,6 +1,6 @@
 # FastMCPとHueyを常駐制御面とワーカー面に分離する
 
-- 状態：採用（OS常駐adapterの製品選定は保留）
+- 状態：採用（OS常駐adapterの製品選定は保留。2026-08-11にWindows worker型を訂正）
 - 日付：2026-08-11
 - 対象シーズン：Season 0からSeason 1
 - 決定者：リポジトリ所有者
@@ -37,7 +37,7 @@ kuma-mcp（FastMCP、loopback HTTP、単一process）
 queue.sqlite3（Hueyの運用queue）
        │
        ▼
-kuma-worker（Huey consumer / scheduler / process workers）
+kuma-worker（Huey consumer / scheduler / platform workers）
   ├─ source別schedule、retry、backoff、single-flight
   ├─ scraperのfetch・parse・normalize
   └─ core ingest APIだけを通してappend
@@ -50,7 +50,11 @@ OS service manager
   └─ kuma-workerの起動・停止・再起動・log
 ```
 
-FastMCPはAI向けcontrol planeとquery面を担当する。Hueyは定期実行とprocess workerを持つdata planeを担当する。両者の連絡には一時的なpipeではなく、durableなqueueを使う。
+FastMCPはAI向けcontrol planeとquery面を担当する。Hueyは定期実行とworker concurrencyを持つdata planeを担当する。両者の連絡には一時的なpipeではなく、durableなqueueを使う。
+
+Huey公式資料ではmultiprocess workerはWindows非対応である。Season 1はI/O-boundなscrapingを主対象とするため、macOSとWindowsに共通する`thread` workerを既定とする。macOS／Linuxの`process` workerはCPU-bound解析の比較probeに降格し、Windows対応を示す根拠にはしない。
+
+ここで維持する「別process」とは、FastMCP serviceとHuey consumer serviceの分離である。Season 1は、すべてのscraper taskがHuey内部でも個別processに隔離されるとは主張しない。強い隔離が必要になったadapterには、timeoutとresource上限を持つsubprocess runnerまたは別worker serviceを将来追加する。
 
 OSへの常駐登録とprocess死活監視は、FastMCPにもHueyにも内包せず、外部のservice manager adapterへ委譲する。`py-simple-service-manager`は候補として実機probeするが、現時点では最終採用しない。macOSのlaunchd、WindowsのWinSWまたは同等機構、Linuxのsystemdを直接包む薄いadapterも比較対象に残す。
 
@@ -76,14 +80,14 @@ HTTP取得物は観測tableへ直接埋め込まず、内容hash、取得時刻�
 
 ## process障害と冪等性
 
-process workerを強制終了すると、実行中taskが完了通知を残さず失われる可能性がある。そのため、queueの存在だけを実行証明にしない。
+workerまたはconsumer serviceを強制終了すると、実行中taskが完了通知を残さず失われる可能性がある。そのため、queueの存在だけを実行証明にしない。
 
 - `fetch_runs`へ`STARTED`、`SUCCEEDED`、`FAILED`、`STALE`を記録する。
 - 起動時に期限超過した`STARTED`を`STALE`へ遷移させ、再実行候補にする。
 - source単位のleaseまたはsingle-flight keyで同時fetchを抑止する。
 - 同じartifact hash、source event ID、assertionを再処理しても観測が無制限に重複しないようにする。
 - 失敗時も直前正常snapshotを削除しない。
-- Windowsの`spawn`開始を前提に、task引数とworkerへ渡すmodelをserialize可能にする。
+- task引数とworkerへ渡すmodelをserialize可能にし、queue payloadへruntime objectやcredentialを入れない。
 
 ## scraper境界
 
@@ -107,12 +111,13 @@ URL取得、timeout、redirect、Content-Type、容量上限、内容hashはadap
 
 - Python packageと設定path
 - FastMCPのloopback HTTP server
-- HueyのSQLite queue、consumer、定期task、process worker
+- HueyのSQLite queue、consumer、定期task、thread worker
 - fake scraperによるenqueueからread-only queryまでのvertical slice
 - `kuma.sqlite3` migration、core ingest、append-only provenance
 - `users.yaml`の原子更新
 - fetch runのstale回収、冪等性、source single-flight
 - macOSとWindowsでのservice manager adapter比較probe
+- macOSでのHuey `thread`／`process`比較probe。Windowsは`thread`だけを受け入れ対象とする
 - 山形県CSVを最初の実情報源候補とし、けものおと2と過年度KML/KMZを独立adapter候補として保持
 
 ## Season 3へ送る範囲
@@ -149,7 +154,7 @@ Season 1では棄却する。ローカル単体運用に対して依存と運用
 
 ### scraperごとに独立serviceを登録する
 
-Season 1では保留する。最初は一つのHuey consumer配下でprocess workerを分ける。adapter固有依存や障害隔離が必要になったsourceだけ、後から別worker poolまたは別serviceへ分離する。
+Season 1では保留する。最初は一つのHuey consumer配下でthread workerを分ける。adapter固有依存や障害隔離が必要になったsourceだけ、後からsubprocess runner、別worker pool、または別serviceへ分離する。
 
 ## 影響
 
@@ -169,7 +174,7 @@ Season 1では保留する。最初は一つのHuey consumer配下でprocess wor
 
 ## 見直し条件
 
-- Hueyのprocess workerまたはschedulerが主要OSで安定運用できないとき。
+- Hueyのthread workerまたはschedulerが主要OSで安定運用できないとき。
 - SQLite queueの破損・lock・throughputが安全情報の鮮度を実測で損なうとき。
 - FastMCPの推奨deploymentまたはtask機構が変わり、兄弟service分離より単純で同等に回復可能な構成が得られたとき。
 - 公式push feed等により定期polling自体が不要になったとき。
@@ -178,7 +183,7 @@ Season 1では保留する。最初は一つのHuey consumer配下でprocess wor
 ## 受け入れ試験
 
 1. FastMCPからfake syncを要求すると、durable queue経由でworkerが実行する。
-2. workerをtask途中で停止して再起動すると、stale runを検出し、観測を重複焼却せず再実行できる。
+2. Huey consumer serviceをtask途中で停止して再起動すると、stale runを検出し、観測を重複焼却せず再実行できる。
 3. MCPだけを再起動しても、workerのscheduleが重複しない。
 4. worker停止中も、MCPは直前正常cacheと停止・鮮度を返す。
 5. AI向けSQLから`kuma.sqlite3`へ書込みできない。
