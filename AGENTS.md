@@ -12,9 +12,9 @@ KUMA800は、行政等が公開するクマ出没情報を、利用者の手元�
 
 現在は **シーズン0：技術選定と実装方針決定** です。
 
-- シーズン1：山形県の現行KML参照リンクを入口に、KMZ/KMLをゼロトラスト取得する
+- シーズン1：FastMCPと別processのHuey workerを常駐させ、静的に同梱した山形県情報源adapterをゼロトラスト取得する
 - シーズン2：複数年度の公開過去ログを検索・比較できるようにする
-- シーズン3：都道府県別アダプターへ拡張する
+- シーズン3：都道府県別adapter、scraper meta記述、動的ON/OFF、Cockpitへ拡張する
 
 未実装機能を実装済みと書かず、候補を確定仕様へ勝手に昇格しません。
 
@@ -121,10 +121,16 @@ AIへ公開するクマSQLiteはread-onlyです。MCP interfaceから、クマ�
 
 ## シーズン1最低要件
 
-KMLの参照リンクをシンボリック入口として扱い、リンク先を無条件に信頼しません。
+FastMCPをAI向けcontrol plane、Hueyをscheduler・process workerとする兄弟service構成を入口にします。AIからのrequest transaction、定期収集、OS常駐を同じ寿命へ潰しません。
+
+Season 1ではadapterをrepositoryへ静的に同梱します。AIによる新規scraper install、動的ON/OFF、scraper meta記述、CockpitはSeason 3の要件であり、未実装のままSeason 1完成を妨げません。
 
 最低限、以下を検証します。
 
+- FastMCPからdurable queueを通して別processのfake scraperを実行できること
+- queue DBとクマ観測DBを分け、queue再作成で観測を消さないこと
+- worker強制停止後のstale回収、冪等再実行、source単位single-flight
+- macOSとWindowsでの起動、停止、異常終了後再起動、log取得
 - 許可する通信方式と接続先
 - リダイレクト回数と最終URL
 - タイムアウト、応答容量、Content-Type
@@ -133,7 +139,7 @@ KMLの参照リンクをシンボリック入口として扱い、リンク先�
 - KML名前空間、Placemark、座標値、日時表現
 - 原典URL、取得日時、ハッシュ、解析器の版
 
-取得失敗、形式変更、位置不明、曖昧地名を黙って欠落させません。
+KML/KMZ固有検査は過年度adapterへ適用します。CSV、公開閲覧面、KML/KMZを同じ確認段階へ潰しません。取得失敗、形式変更、位置不明、曖昧地名を黙って欠落させません。
 
 ## Atlantis / SphereOSシンボリック
 

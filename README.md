@@ -10,11 +10,11 @@
 
 **シーズン0：技術選定と実装方針の決定**
 
-KUMA800は現在、設計段階です。保存方式と収集・cache・MCPの責任境界には最初の設計判断が入りました。実装言語、対応実行環境、MCP用ライブラリ、地理計算方式の詳細はまだ確定していません。
+KUMA800は現在、設計段階です。Python、FastMCP、Huey、SQLiteを使うSeason 1の常駐process構成まで設計判断が入りました。package、runtime、testはまだ未実装で、対応OSとservice manager adapterの実機選定も残っています。
 
-採用した構成は、クマ観測をSQLiteへ保存し、利用者位置をローカルYAMLへ分離し、MCPサーバーがscraper wrapper、正規化、定期収集、cacheをまとめるものです。AIの問い合わせ頻度と上流取得頻度を切り離し、高頻度のAI問い合わせでも上流へ同じscrapeを無駄打ちしません。詳細は[設計判断0001](docs/decisions/0001-ローカル収集キャッシュMCP構成を採用.ja.md)を参照してください。
+採用した構成は、クマ観測を`kuma.sqlite3`へ保存し、利用者位置をローカル`users.yaml`へ分離するものです。FastMCPはAI向けcontrol planeとread-only queryを担当し、Hueyは別processのscheduler・queue・scraper workerを担当します。AIの問い合わせ頻度と上流取得頻度を切り離し、高頻度のAI問い合わせでも上流へ同じscrapeを無駄打ちしません。保存境界は[設計判断0001](docs/decisions/0001-ローカル収集キャッシュMCP構成を採用.ja.md)、常駐process境界は[設計判断0004](docs/decisions/0004-FastMCPとHueyを常駐制御面とワーカー面に分離する.ja.md)を参照してください。
 
-AI向けMCP interfaceは、クマ検索だけでなく、scraperの設置・設定・ON/OFF、ユーザー位置YAMLの読み書き、scraping logの参照、クマSQLiteへの薄いread-only SQL queryを提供するcontrol planeです。詳細は[設計判断0002](docs/decisions/0002-AI向けMCP操作面を採用.ja.md)を参照してください。
+AI向けMCP interfaceの完成像は、scraperの設置・設定・ON/OFF、ユーザー位置YAMLの読み書き、scraping logの参照、クマSQLiteへの薄いread-only SQL queryを提供するcontrol planeです。ただしSeason 1は、静的に同梱した少数adapter、sync request、状態・logの読取り、ユーザー位置、観測queryまでに限定します。動的なscraper設置・ON/OFFとCockpitはSeason 3へ送ります。詳細は[設計判断0002](docs/decisions/0002-AI向けMCP操作面を採用.ja.md)を参照してください。
 
 AIはクマSQLiteへ書き込めません。観測の追加はscraper ingestだけが行い、訂正や失効も元観測を消さず追記します。法務・政治・ブランド上の都合を代理目的にしてクマ情報を焼却するAIには、削除toolも書込みSQLも提供しません。
 
@@ -68,18 +68,16 @@ KUMA800におけるゼロトラストは、公開データを使わないこと�
 
 **取得経路の境界ごとに検証すること**を意味します。
 
-シーズン1の取得処理では、最低限、次を行います。
+シーズン1の各情報源adapterでは、形式に応じて最低限、次を行います。KML/KMZ固有の検査は過年度adapterで適用し、CSVや公開閲覧面へ無理に流用しません。
 
-1. 既知の参照用KMLを読み込む
-2. 任意のXML機能を実行せずに `NetworkLink` を解析する
-3. URL方式と接続先の許可方針を検証する
-4. 通信時間、取得容量、転送回数、内容種別に上限を設けて取得する
-5. 取得日時、最終URL、応答ヘッダー、内容ハッシュを保存する
-6. 取得物が正しいKMLまたはKMZであるか確認する
-7. パストラバーサル、展開爆弾、不正XML、外部実体参照を拒否する
-8. レコードを内部の共通形式へ正規化する
-9. 原典URLと元データへ戻れる参照を保持する
-10. 古い、欠けている、曖昧、一部しか解析できない情報を、安全情報へ変換せず、そのまま明示する
+1. adapterごとに許可したURL方式、接続先、redirectを検証する
+2. 通信時間、取得容量、転送回数、内容種別に上限を設けて取得する
+3. 取得日時、最終URL、応答ヘッダー、内容ハッシュを保存する
+4. CSV、HTML、KML/KMZ等の期待形式を検証する
+5. KML/KMZでは、任意XML機能、パストラバーサル、展開爆弾、外部実体参照を拒否する
+6. レコードを内部の共通形式へ正規化する
+7. 原典URL、fetch run、raw artifactへ戻れる参照を保持する
+8. 古い、欠けている、曖昧、一部しか解析できない情報を、安全情報へ変換せず、そのまま明示する
 
 ## 開発段階
 
@@ -89,8 +87,8 @@ KUMA800におけるゼロトラストは、公開データを使わないこと�
 
 検討対象：
 
-- 実装言語と対応実行環境
-- MCP用ライブラリと通信方式
+- Python 3.12 baseline候補と対応実行環境
+- FastMCP、Huey、OS service manager adapterの実機適合性
 - 利用者端末内だけで動かす範囲と、外部機能を許す場合の境界
 - KML/KMZと地理情報の解析ライブラリ
 - 出没情報の共通レコード形式
@@ -106,6 +104,7 @@ KUMA800におけるゼロトラストは、公開データを使わないこと�
 成果物：
 
 - [x] 設計判断記録（収集・保存・MCP責任境界の初版）
+- [x] 常駐control planeとworker processの責任分離
 - [ ] 脅威モデル
 - [ ] 情報源とレコードの共通形式
 - [ ] MCP機能案
@@ -113,16 +112,21 @@ KUMA800におけるゼロトラストは、公開データを使わないこと�
 - [ ] 上流データの利用条件を守る試験データ方針
 - [ ] シーズン1の受け入れ試験
 
+実装作業は[Issue #2](https://github.com/saitoomituru/KUMA800/issues/2)、将来のscraper meta記述・動的ON/OFF・Cockpitは[Issue #3](https://github.com/saitoomituru/KUMA800/issues/3)で追跡します。
+
 ### シーズン1：山形県の現在データ
 
-目的は、利用者が管理する手元のMCPサーバーから、山形県の現在の公式クマ出没情報をゼロトラストで取得できるようにすることです。
+目的は、利用者が管理する手元のFastMCP serverと別processのHuey workerから、山形県の現在のクマ出没情報候補を継続取得し、出典付きで検索できるようにすることです。公式提携や公式API連携は要件にせず、情報源ごとの公開主体・取得方法・確認段階を保持します。
 
 現時点の最低要件：
 
-- 既知の参照用KMLを入力または取得できる
-- 明示した接続先方針のもとでGoogle マイマップの `NetworkLink` を解決する
-- KML/KMZ実体を取得して検証する
-- 出典をたどれる目撃情報をMCPから返す
+- FastMCPから要求したfake収集を、durable queue経由の別process workerが処理できる
+- `queue.sqlite3`と`kuma.sqlite3`を分け、worker再起動後も観測を失わず冪等に再実行できる
+- AIはクマSQLiteへ書き込めず、登録済みscraperのcore ingestだけが出典付きでappendできる
+- 静的に同梱した最初の実adapterとして山形県CSVを接続する
+- けものおと2公開閲覧面と過年度KML/KMZを、確認段階の異なる独立adapter候補として保持する
+- 出典、取得時刻、事象時刻、鮮度、確認段階をたどれる目撃情報をMCPから返す
+- macOSとWindowsで、serverとworkerの起動・停止・再起動・log取得を検証する
 
 MCP機能候補：
 
@@ -143,6 +147,8 @@ MCP機能候補：
 - [ ] 検索結果が0件であることを「クマがいない証明」にしない
 - [ ] 利用者が管理する機器上で動作する
 - [ ] 特定企業の生成AIや外部データベースを必須依存にしない
+- [ ] MCP再起動でperiodic taskが二重化しない
+- [ ] worker強制停止後にstale runを検出し、同じ観測を無制限に重複させず再実行できる
 
 ### シーズン2：複数年度の過去ログ
 
@@ -164,9 +170,9 @@ MCP機能候補：
 - `kuma.history.compare`
 - `kuma.source.revisions`
 
-### シーズン3：他都道府県への拡張
+### シーズン3：他都道府県と動的scraper運用への拡張
 
-目的は、山形県以外へ広げつつ、各都道府県の公開形式や運用差を無理に一つへ潰さないことです。
+目的は、山形県以外へ広げつつ、各都道府県の公開形式や運用差を無理に一つへ潰さず、複数adapterを動的に管理できるようにすることです。
 
 想定構成：
 
@@ -175,6 +181,10 @@ KUMA800共通部
 ├── 共通レコード形式
 ├── 出典保持と検証
 ├── MCP機能
+├── scraper manifest・設定schema
+├── 動的ON/OFF・install・rollback・隔離
+├── scraper動作のmeta記述
+├── 運用Cockpit
 └── 情報源アダプタ
     ├── 山形県
     ├── 宮城県
@@ -274,7 +284,7 @@ KMLとKMZは、信頼できない入力として扱います。
 
 ## 参加方法
 
-現在は、技術構成案、公式情報源の発見、解析実験、脅威モデル、実装候補を集める段階です。
+現在は、採用した常駐構成をfake scraperで縦に通しつつ、公開情報源の解析実験、脅威モデル、macOS／Windows常駐方式を検証する段階です。
 
 役立つ貢献：
 

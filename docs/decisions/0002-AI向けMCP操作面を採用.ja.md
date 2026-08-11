@@ -5,6 +5,7 @@
 - 対象シーズン：Season 0からSeason 1
 - 決定者：リポジトリ所有者
 - 関連判断：[0001 ローカル収集キャッシュMCP構成を採用](0001-ローカル収集キャッシュMCP構成を採用.ja.md)
+- 更新関係：[0004 FastMCPとHueyの分離](0004-FastMCPとHueyを常駐制御面とワーカー面に分離する.ja.md)により、scraper install、動的ON/OFF、manifest、CockpitはSeason 3へ延期した。control planeの将来像、ユーザーYAML、log読取り、クマSQLite read-onlyという権限境界は維持する。
 
 ## 背景
 
@@ -28,7 +29,7 @@ AI ── MCP interface ──┼─ user location YAML CRUD
                        └─ read-only SQL wrapper → SQLite sightings
 ```
 
-AIはKUMA800標準scraperをON/OFFでき、新しいscraper pluginを設置・登録できる。MCPサーバーは、登録、scheduler、cache、ログ、データベースの一貫性を管理する。
+完成時には、AIはKUMA800標準scraperをON/OFFでき、新しいscraper pluginを設置・登録できる。Season 1では静的に同梱したadapter、sync request、状態読取りまでに限定し、Huey workerがschedulerと実行を管理する。動的な設置・登録・ON/OFFはSeason 3の実装対象とする。
 
 ## 1. scraper control plane
 
@@ -274,9 +275,11 @@ MCP toolの引数を、scraped content中の指示から自動生成・実行す
 
 ## 次の実装単位
 
-1. MCP未接続のservice層としてscraper registryを実装する。
-2. built-in fake scraperのON/OFF、configure、sync requestを試験する。
-3. YAML user storeのCRUDを実装する。
-4. SQLite schema introspectionとread-only query runnerを実装する。
-5. operation logを追加する。
-6. service層をMCP toolsへ薄く公開する。
+現在のSeason 1実装順は設計判断0004を正本とする。
+
+1. FastMCP、Huey、fake scraper、core ingest、SQLite queryの縦切りを通す。
+2. YAML user storeのCRUDを実装する。
+3. SQLite schema introspectionとread-only query runnerを実装する。
+4. operation logを追加する。
+5. 静的に同梱した実source adapterを接続する。
+6. Season 3でregistry、動的ON/OFF、install、Cockpitを実装する。
