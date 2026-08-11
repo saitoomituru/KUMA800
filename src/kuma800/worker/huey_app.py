@@ -1,0 +1,27 @@
+"""Huey consumerがimportする永続queueとtask。"""
+
+from __future__ import annotations
+
+from dataclasses import asdict
+
+from huey import SqliteHuey, crontab  # type: ignore[import-untyped]
+
+from kuma800.runtime import RuntimePaths
+
+from .service import execute_scrape
+
+paths = RuntimePaths.resolve()
+paths.data_dir.mkdir(parents=True, exist_ok=True)
+huey = SqliteHuey("kuma800", filename=str(paths.queue_database), results=True, utc=True)
+
+
+@huey.task()  # type: ignore[untyped-decorator]
+def scrape_source(source_id: str) -> dict[str, object]:
+    """指定sourceのscrapeをconsumer processで実行する。"""
+    return asdict(execute_scrape(source_id, paths=paths))
+
+
+@huey.periodic_task(crontab(minute="*/5"))  # type: ignore[untyped-decorator]
+def poll_dummy_kuma() -> dict[str, object]:
+    """DUMMY-KUMAを5分ごとにpollするscheduler smoke。"""
+    return asdict(execute_scrape("dummy-kuma", paths=paths))

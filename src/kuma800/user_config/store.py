@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from platformdirs import user_data_path
+
+from kuma800.runtime import RuntimePaths
 
 from .models import UserLocation
 
@@ -18,7 +19,7 @@ SCHEMA_VERSION = 1
 
 def default_users_path() -> Path:
     """repository外のOS標準user data directoryを返す。"""
-    return user_data_path("KUMA800", "ZeroRoomLab") / "users.yaml"
+    return RuntimePaths.resolve().users_yaml
 
 
 def _timestamp(value: datetime) -> str:

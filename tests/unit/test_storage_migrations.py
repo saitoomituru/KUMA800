@@ -85,7 +85,7 @@ def test_migration_is_idempotent(tmp_path: Path) -> None:
     """初回だけmigrationが適用され、再実行でschemaを作り直さない。"""
     database_path = tmp_path / "kuma.sqlite3"
 
-    assert migrate_database(database_path) == (1,)
+    assert migrate_database(database_path) == (1, 2)
     assert migrate_database(database_path) == ()
 
     connection = sqlite3.connect(database_path)
@@ -100,7 +100,10 @@ def test_migration_is_idempotent(tmp_path: Path) -> None:
     finally:
         connection.close()
 
-    assert versions == [(1, "initial_observation_store")]
+    assert versions == [
+        (1, "initial_observation_store"),
+        (2, "single_flight_fetch_runs"),
+    ]
     assert {
         "sources",
         "fetch_runs",

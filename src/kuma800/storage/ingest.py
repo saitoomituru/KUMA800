@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -71,17 +72,38 @@ class ObservationIngestStore:
         connection = _connect_writable(self._database_path)
         try:
             with connection:
+                started_at_text = _as_utc_text(started_at)
+                try:
+                    connection.execute(
+                        """
+                        INSERT INTO fetch_runs(run_id, source_id, status, started_at)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            resolved_run_id,
+                            source_id,
+                            FetchRunStatus.STARTED.value,
+                            started_at_text,
+                        ),
+                    )
+                except sqlite3.IntegrityError as error:
+                    active = connection.execute(
+                        """
+                        SELECT run_id FROM fetch_runs
+                        WHERE source_id = ? AND status = 'STARTED'
+                        """,
+                        (source_id,),
+                    ).fetchone()
+                    if active is not None:
+                        raise FetchAlreadyRunning(source_id, str(active[0])) from error
+                    raise
                 connection.execute(
                     """
-                    INSERT INTO fetch_runs(run_id, source_id, status, started_at)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO source_state(source_id, last_started_at)
+                    VALUES (?, ?)
+                    ON CONFLICT(source_id) DO UPDATE SET last_started_at = excluded.last_started_at
                     """,
-                    (
-                        resolved_run_id,
-                        source_id,
-                        FetchRunStatus.STARTED.value,
-                        _as_utc_text(started_at),
-                    ),
+                    (source_id, started_at_text),
                 )
         finally:
             connection.close()
@@ -128,8 +150,75 @@ class ObservationIngestStore:
                         run_id,
                     ),
                 )
+                if status is FetchRunStatus.SUCCEEDED:
+                    connection.execute(
+                        """
+                        UPDATE source_state
+                        SET last_succeeded_at = ?, consecutive_failures = 0,
+                            backoff_until = NULL, last_error_code = NULL
+                        WHERE source_id = (
+                            SELECT source_id FROM fetch_runs WHERE run_id = ?
+                        )
+                        """,
+                        (_as_utc_text(finished_at), run_id),
+                    )
+                else:
+                    connection.execute(
+                        """
+                        UPDATE source_state
+                        SET consecutive_failures = consecutive_failures + 1,
+                            last_error_code = ?
+                        WHERE source_id = (
+                            SELECT source_id FROM fetch_runs WHERE run_id = ?
+                        )
+                        """,
+                        (error_code or status.value, run_id),
+                    )
         finally:
             connection.close()
+
+    def recover_stale(self, *, before: datetime, recovered_at: datetime) -> tuple[str, ...]:
+        """期限より古いSTARTED runをSTALEへ遷移させる。"""
+        connection = _connect_writable(self._database_path)
+        stale_run_ids: list[str] = []
+        try:
+            with connection:
+                rows = connection.execute(
+                    """
+                    SELECT run_id FROM fetch_runs
+                    WHERE status = 'STARTED' AND started_at < ?
+                    ORDER BY started_at, run_id
+                    """,
+                    (_as_utc_text(before),),
+                ).fetchall()
+                for row in rows:
+                    run_id = str(row[0])
+                    self._finish_stale(connection, run_id, recovered_at)
+                    stale_run_ids.append(run_id)
+        finally:
+            connection.close()
+        return tuple(stale_run_ids)
+
+    @staticmethod
+    def _finish_stale(connection: sqlite3.Connection, run_id: str, recovered_at: datetime) -> None:
+        """同じtransaction内でstale runとsource状態を更新する。"""
+        connection.execute(
+            """
+            UPDATE fetch_runs
+            SET status = 'STALE', finished_at = ?, error_code = 'STALE_RECOVERY'
+            WHERE run_id = ? AND status = 'STARTED'
+            """,
+            (_as_utc_text(recovered_at), run_id),
+        )
+        connection.execute(
+            """
+            UPDATE source_state
+            SET consecutive_failures = consecutive_failures + 1,
+                last_error_code = 'STALE_RECOVERY'
+            WHERE source_id = (SELECT source_id FROM fetch_runs WHERE run_id = ?)
+            """,
+            (run_id,),
+        )
 
     def append_candidate(
         self,
@@ -238,3 +327,13 @@ class ObservationIngestStore:
                 )
         finally:
             connection.close()
+
+
+class FetchAlreadyRunning(RuntimeError):
+    """同じsourceのfetchが既にSTARTEDであることを示す。"""
+
+    def __init__(self, source_id: str, run_id: str) -> None:
+        """衝突したsourceとrunを保持する。"""
+        self.source_id = source_id
+        self.run_id = run_id
+        super().__init__(f"fetch already running for source {source_id}: {run_id}")

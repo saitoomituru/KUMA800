@@ -129,7 +129,19 @@ _INITIAL_SCHEMA = Migration(
     ),
 )
 
-_MIGRATIONS = (_INITIAL_SCHEMA,)
+_SINGLE_FLIGHT_SCHEMA = Migration(
+    version=2,
+    name="single_flight_fetch_runs",
+    statements=(
+        """
+        CREATE UNIQUE INDEX fetch_runs_one_started_per_source
+        ON fetch_runs(source_id)
+        WHERE status = 'STARTED'
+        """,
+    ),
+)
+
+_MIGRATIONS = (_INITIAL_SCHEMA, _SINGLE_FLIGHT_SCHEMA)
 
 
 def _connect_writable(database_path: Path) -> sqlite3.Connection:

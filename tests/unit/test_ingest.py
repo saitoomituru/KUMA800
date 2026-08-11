@@ -15,7 +15,7 @@ from kuma800.domain import (
     ReviewState,
     SourceDescriptor,
 )
-from kuma800.storage import ObservationIngestStore, migrate_database
+from kuma800.storage import FetchAlreadyRunning, ObservationIngestStore, migrate_database
 
 _NOW = datetime(2026, 8, 11, 12, 0, tzinfo=UTC)
 
@@ -142,5 +142,30 @@ def test_terminal_fetch_run_cannot_be_finished_twice(tmp_path: Path) -> None:
         assert connection.execute(
             "SELECT status FROM fetch_runs WHERE run_id = ?", (run_id,)
         ).fetchone() == (FetchRunStatus.SUCCEEDED.value,)
+    finally:
+        connection.close()
+
+
+def test_source_single_flight_and_stale_recovery(tmp_path: Path) -> None:
+    """同じsourceの並行STARTEDを拒否し、期限切れだけ回収する。"""
+    store, database_path, run_id = _prepared_store(tmp_path)
+
+    with pytest.raises(FetchAlreadyRunning) as captured:
+        store.start_fetch("fake", started_at=_NOW, run_id="run-2")
+    assert captured.value.run_id == run_id
+
+    assert store.recover_stale(before=_NOW, recovered_at=_NOW) == ()
+    assert store.recover_stale(
+        before=datetime(2026, 8, 11, 12, 1, tzinfo=UTC),
+        recovered_at=datetime(2026, 8, 11, 12, 2, tzinfo=UTC),
+    ) == (run_id,)
+
+    replacement = store.start_fetch("fake", started_at=_NOW, run_id="run-2")
+    assert replacement == "run-2"
+    connection = sqlite3.connect(database_path)
+    try:
+        assert connection.execute(
+            "SELECT status, error_code FROM fetch_runs WHERE run_id = ?", (run_id,)
+        ).fetchone() == (FetchRunStatus.STALE.value, "STALE_RECOVERY")
     finally:
         connection.close()

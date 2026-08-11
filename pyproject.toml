@@ -11,9 +11,13 @@ requires-python = ">=3.12"
 license = "Apache-2.0"
 authors = [{ name = "ZeroRoomLab" }]
 dependencies = [
+  "huey>=2.5.3,<3",
   "platformdirs>=4.4.0,<5",
   "PyYAML>=6.0.2,<7",
 ]
+
+[project.scripts]
+kuma800-worker = "kuma800.worker.cli:main"
 
 [dependency-groups]
 dev = [

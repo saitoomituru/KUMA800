@@ -10,7 +10,7 @@
 
 **シーズン1：fake vertical sliceの実装中**
 
-KUMA800は現在、Python 3.12のpackage／CI骨格、追記専用のクマ観測SQLite、出典付き冪等ingest、repository外の利用者位置YAMLまで実装済みです。FastMCP、Huey worker、fake scraper、service manager adapterは未実装で、実運用できる完成品ではありません。Season 1の進行と未決事項は[Issue #2](https://github.com/saitoomituru/KUMA800/issues/2)で追跡します。
+KUMA800は現在、Python 3.12のpackage／CI骨格、追記専用のクマ観測SQLite、出典付き冪等ingest、repository外の利用者位置YAML、Huey thread worker、ネットワークへ接続しないDUMMY-KUMA adapterまで実装済みです。FastMCP、実データadapter、service manager adapterは未実装で、実運用できる完成品ではありません。Season 1の進行と未決事項は[Issue #2](https://github.com/saitoomituru/KUMA800/issues/2)で追跡します。
 
 採用した構成は、クマ観測を`kuma.sqlite3`へ保存し、利用者位置をローカル`users.yaml`へ分離するものです。FastMCPはAI向けcontrol planeとread-only queryを担当し、Hueyは別service processのscheduler・queue・scraper workerを担当します。Season 1はmacOSとWindowsで使えるHueyの`thread` workerを既定とし、multiprocess非対応のWindowsへprocess worker対応を誤表示しません。AIの問い合わせ頻度と上流取得頻度を切り離し、高頻度のAI問い合わせでも上流へ同じscrapeを無駄打ちしません。保存境界は[設計判断0001](docs/decisions/0001-ローカル収集キャッシュMCP構成を採用.ja.md)、常駐process境界は[設計判断0004](docs/decisions/0004-FastMCPとHueyを常駐制御面とワーカー面に分離する.ja.md)を参照してください。
 
@@ -313,6 +313,16 @@ uv run --frozen pytest -m "not live and not physical"
 ```
 
 通常のGitHub ActionsはLinux上のoffline gateだけを各pushで実行します。macOS／Windows hosted portability probeは手動workflowへ分け、こまめなpushが不要な演算資源消費へ直結しないようにします。Windows hosted runnerの成功は、Issue #4で待つWindows実機の常駐、sleep／resume、reboot、長時間運転を証明しません。
+
+### DUMMY-KUMA worker
+
+次のforeground commandは、OS標準user data directoryへ`queue.sqlite3`と`kuma.sqlite3`を分離して作り、Huey consumerをthread worker 2本で起動します。開発時は`KUMA800_DATA_DIR`で保存先を明示できます。
+
+```console
+KUMA800_DATA_DIR=/tmp/kuma800-dev uv run --frozen kuma800-worker
+```
+
+DUMMY-KUMAは5分間隔のscheduler smokeであり、実際のクマ情報ではありません。consumerをserviceとして登録するlaunchd／Windows adapter、停止・再起動・sleep復帰はまだ未実装です。
 
 ## ライセンス
 
