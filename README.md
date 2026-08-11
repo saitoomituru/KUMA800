@@ -334,6 +334,20 @@ KUMA800_DATA_DIR=/tmp/kuma800-dev uv run --frozen kuma800-mcp
 
 MCPは観測状態、取得log、出典付き観測の固定read-only query、DUMMY scraperのenqueue、利用者位置YAML CRUDを公開します。任意SQL、観測UPDATE／DELETE、scrape完了待ちは公開しません。portは`KUMA800_MCP_PORT`で変更できますが、bind先は`127.0.0.1`固定です。
 
+### macOS LaunchAgent生成
+
+導入先venvのPython、repository外data directory、log directoryを絶対pathで指定すると、workerとMCPを別processで監督するplistを2本生成します。
+
+```console
+uv run --frozen kuma800-launchd-render \
+  --output-dir "$HOME/Library/LaunchAgents" \
+  --data-dir "$HOME/Library/Application Support/KUMA800" \
+  --log-dir "$HOME/Library/Logs/KUMA800" \
+  --python "/absolute/path/to/KUMA800/.venv/bin/python3"
+```
+
+生成器はplistを作るだけで、自動的に`launchctl bootstrap`しません。現在のMac実機probeでは2 serviceの同時起動、loopback MCP到達、Huey task処理、bootoutまで確認済みです。login後起動、sleep／resume、reboot、長時間運転は未検証です。
+
 ## ライセンス
 
 Apache License 2.0。詳細は [`LICENSE`](LICENSE) を参照してください。

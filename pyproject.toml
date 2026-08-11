@@ -18,6 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
+kuma800-launchd-render = "kuma800.service.launchd:main"
 kuma800-mcp = "kuma800.mcp_server:main"
 kuma800-worker = "kuma800.worker.cli:main"
 
