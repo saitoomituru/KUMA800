@@ -1,0 +1,59 @@
+[build-system]
+requires = ["uv_build>=0.11.15,<0.13"]
+build-backend = "uv_build"
+
+[project]
+name = "kuma800"
+version = "0.0.1"
+description = "ローカルファーストでクマ観測を収集・提示するKUMA800"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "ZeroRoomLab" }]
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "mypy>=1.18.2,<2",
+  "pytest>=8.4.2,<9",
+  "pytest-cov>=7.0.0,<8",
+  "ruff>=0.13.2,<0.14",
+]
+
+[tool.uv]
+required-version = ">=0.11.15,<0.13"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+addopts = [
+  "--strict-config",
+  "--strict-markers",
+  "--cov=kuma800",
+  "--cov-report=term-missing",
+  "--cov-fail-under=80",
+]
+testpaths = ["tests"]
+markers = [
+  "live: 実情報源へ接続する試験",
+  "physical: 実機の常駐・再起動を伴う試験",
+  "process_smoke: 複数processを起動する試験",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["kuma800"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

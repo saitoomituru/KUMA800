@@ -300,6 +300,20 @@ KMLとKMZは、信頼できない入力として扱います。
 
 作業前に [`AGENTS.md`](AGENTS.md) を読み、実験記録は [`note/`](note/) の規約に従ってください。
 
+## 開発と検証
+
+Season 1の実装baseline候補はPython 3.12です。依存環境は`uv.lock`から再現します。
+
+```console
+uv sync --frozen --all-groups
+uv run --frozen ruff format --check .
+uv run --frozen ruff check .
+uv run --frozen mypy
+uv run --frozen pytest -m "not live and not physical"
+```
+
+通常のGitHub ActionsはLinux上のoffline gateだけを各pushで実行します。macOS／Windows hosted portability probeは手動workflowへ分け、こまめなpushが不要な演算資源消費へ直結しないようにします。Windows hosted runnerの成功は、Issue #4で待つWindows実機の常駐、sleep／resume、reboot、長時間運転を証明しません。
+
 ## ライセンス
 
 Apache License 2.0。詳細は [`LICENSE`](LICENSE) を参照してください。

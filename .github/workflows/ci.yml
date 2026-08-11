@@ -1,0 +1,43 @@
+name: Python CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: uvとPython 3.12を準備
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: lockどおりに同期
+        run: uv sync --frozen --all-groups
+
+      - name: format
+        run: uv run --frozen ruff format --check .
+
+      - name: lint
+        run: uv run --frozen ruff check .
+
+      - name: type
+        run: uv run --frozen mypy
+
+      - name: offline test
+        run: uv run --frozen pytest -m "not live and not physical"
