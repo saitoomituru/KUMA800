@@ -28,6 +28,10 @@ def test_execute_scrape_is_idempotent_across_runs(tmp_path: Path) -> None:
     try:
         assert connection.execute("SELECT COUNT(*) FROM sightings").fetchone() == (1,)
         assert connection.execute("SELECT COUNT(*) FROM fetch_runs").fetchone() == (2,)
+        assert connection.execute(
+            "SELECT COUNT(*) FROM fetch_runs "
+            "WHERE final_url IS NOT NULL AND content_hash IS NOT NULL"
+        ).fetchone() == (2,)
     finally:
         connection.close()
 

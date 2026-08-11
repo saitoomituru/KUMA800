@@ -50,14 +50,14 @@ def execute_scrape(
     store.register_source(adapter.source, created_at=fetched_at)
     run_id = store.start_fetch(source_id, started_at=fetched_at)
     try:
-        candidates = adapter.fetch(fetched_at=fetched_at)
+        batch = adapter.fetch(fetched_at=fetched_at)
         inserted_count = sum(
             store.append_candidate(
                 candidate,
                 fetch_run_id=run_id,
                 created_at=fetched_at,
             ).sighting_inserted
-            for candidate in candidates
+            for candidate in batch.candidates
         )
     except Exception as error:
         store.finish_fetch(
@@ -72,10 +72,12 @@ def execute_scrape(
         run_id,
         status=FetchRunStatus.SUCCEEDED,
         finished_at=datetime.now(UTC),
+        final_url=batch.final_url,
+        content_hash=batch.content_hash,
     )
     return ScrapeRunResult(
         run_id=run_id,
         source_id=source_id,
-        candidate_count=len(candidates),
+        candidate_count=len(batch.candidates),
         inserted_count=inserted_count,
     )

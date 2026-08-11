@@ -131,3 +131,17 @@ class IngestResult:
     assertion_id: int
     sighting_inserted: bool
     assertion_inserted: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ScrapeBatch:
+    """一回の取得artifactと正規化済み候補。"""
+
+    final_url: str
+    content_hash: str
+    candidates: tuple[CandidateObservation, ...]
+
+    def __post_init__(self) -> None:
+        """取得物のprovenanceを候補と一緒に検証する。"""
+        require_public_http_url(self.final_url, "final_url")
+        require_sha256(self.content_hash, "content_hash")

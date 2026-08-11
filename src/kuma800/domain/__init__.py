@@ -6,6 +6,7 @@ from .models import (
     FetchRunStatus,
     IngestResult,
     ReviewState,
+    ScrapeBatch,
     SourceDescriptor,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "FetchRunStatus",
     "IngestResult",
     "ReviewState",
+    "ScrapeBatch",
     "SourceDescriptor",
 ]

@@ -9,6 +9,7 @@ from kuma800.domain import (
     AssertionKind,
     CandidateObservation,
     ReviewState,
+    ScrapeBatch,
     SourceDescriptor,
 )
 
@@ -28,24 +29,27 @@ class DummyKumaAdapter:
             source_url="https://example.invalid/kuma800/dummy-kuma",
         )
 
-    def fetch(self, *, fetched_at: datetime) -> tuple[CandidateObservation, ...]:
+    def fetch(self, *, fetched_at: datetime) -> ScrapeBatch:
         """山形県近傍の架空観測を一件返す。"""
-        return (
-            CandidateObservation(
-                source_id=self.source.source_id,
-                source_event_id="dummy-event-1",
-                source_url=self.source.source_url,
-                fetched_at=fetched_at,
-                event_time=fetched_at,
-                latitude=38.0,
-                longitude=140.0,
-                location_precision="fixture-point",
-                input_kind="fixture",
-                review_state=ReviewState.UNKNOWN,
-                assertion_kind=AssertionKind.REPORTED,
-                animal_kind="bear",
-                count=1,
-                original_text=_TEXT,
-                content_hash=_HASH,
-            ),
+        candidate = CandidateObservation(
+            source_id=self.source.source_id,
+            source_event_id="dummy-event-1",
+            source_url=self.source.source_url,
+            fetched_at=fetched_at,
+            event_time=fetched_at,
+            latitude=38.0,
+            longitude=140.0,
+            location_precision="fixture-point",
+            input_kind="fixture",
+            review_state=ReviewState.UNKNOWN,
+            assertion_kind=AssertionKind.REPORTED,
+            animal_kind="bear",
+            count=1,
+            original_text=_TEXT,
+            content_hash=_HASH,
+        )
+        return ScrapeBatch(
+            final_url=self.source.source_url,
+            content_hash=_HASH,
+            candidates=(candidate,),
         )

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol
 
-from kuma800.domain import CandidateObservation, SourceDescriptor
+from kuma800.domain import ScrapeBatch, SourceDescriptor
 
 
 class ScraperAdapter(Protocol):
@@ -15,5 +15,5 @@ class ScraperAdapter(Protocol):
     def source(self) -> SourceDescriptor:
         """静的な出典識別情報を返す。"""
 
-    def fetch(self, *, fetched_at: datetime) -> tuple[CandidateObservation, ...]:
-        """正規化済み観測候補を返す。"""
+    def fetch(self, *, fetched_at: datetime) -> ScrapeBatch:
+        """取得artifact情報と正規化済み観測候補を返す。"""
