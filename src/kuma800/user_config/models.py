@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -23,11 +24,11 @@ class UserLocation:
         """YAMLへ保存できる最小不変条件を検証する。"""
         if not self.user_id.strip():
             raise ValueError("user_id must not be empty")
-        if not -90 <= self.latitude <= 90:
+        if not isfinite(self.latitude) or not -90 <= self.latitude <= 90:
             raise ValueError("latitude must be between -90 and 90")
-        if not -180 <= self.longitude <= 180:
+        if not isfinite(self.longitude) or not -180 <= self.longitude <= 180:
             raise ValueError("longitude must be between -180 and 180")
-        if self.radius_km <= 0:
+        if not isfinite(self.radius_km) or self.radius_km <= 0:
             raise ValueError("radius_km must be greater than zero")
         try:
             ZoneInfo(self.timezone)

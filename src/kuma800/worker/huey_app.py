@@ -25,3 +25,9 @@ def scrape_source(source_id: str) -> dict[str, object]:
 def poll_dummy_kuma() -> dict[str, object]:
     """DUMMY-KUMAを5分ごとにpollするscheduler smoke。"""
     return asdict(execute_scrape("dummy-kuma", paths=paths))
+
+
+@huey.periodic_task(crontab(minute="17"))  # type: ignore[untyped-decorator]
+def poll_yamagata_csv() -> dict[str, object]:
+    """山形県ページから現行CSV snapshotを毎時17分に確認する。"""
+    return asdict(execute_scrape("yamagata-r8-csv", paths=paths))

@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from math import isfinite
 from urllib.parse import urlparse
 
 _SHA256_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -106,9 +107,13 @@ class CandidateObservation:
             require_aware(self.event_time, "event_time")
         if (self.latitude is None) != (self.longitude is None):
             raise ValueError("latitude and longitude must be provided together")
-        if self.latitude is not None and not -90 <= self.latitude <= 90:
+        if self.latitude is not None and (
+            not isfinite(self.latitude) or not -90 <= self.latitude <= 90
+        ):
             raise ValueError("latitude must be between -90 and 90")
-        if self.longitude is not None and not -180 <= self.longitude <= 180:
+        if self.longitude is not None and (
+            not isfinite(self.longitude) or not -180 <= self.longitude <= 180
+        ):
             raise ValueError("longitude must be between -180 and 180")
         if self.count is not None and self.count < 0:
             raise ValueError("count must be non-negative")

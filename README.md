@@ -10,7 +10,7 @@
 
 **シーズン1：fake vertical sliceの実装中**
 
-KUMA800は現在、Python 3.12のpackage／CI骨格、追記専用のクマ観測SQLite、出典付き冪等ingest、repository外の利用者位置YAML、Huey thread worker、ネットワークへ接続しないDUMMY-KUMA adapterまで実装済みです。FastMCP、実データadapter、service manager adapterは未実装で、実運用できる完成品ではありません。Season 1の進行と未決事項は[Issue #2](https://github.com/saitoomituru/KUMA800/issues/2)で追跡します。
+KUMA800は現在、Python 3.12のpackage／CI、追記専用のクマ観測SQLite、出典付き冪等ingest、repository外の利用者位置YAML、Huey thread worker、FastMCP control-plane、macOS launchd生成器、DUMMY-KUMAと山形県CSV adapterまで実装済みです。山形県CSVは県公式ページから日付付きsnapshotを発見する非公式adapterであり、公式API連携や県の公認を意味しません。retry／backoff、長時間常駐、sleep／resume、reboot、Windows実機、けものおと2 adapterは未完了で、実運用上の安全を保証する完成品ではありません。Season 1の進行と未決事項は[Issue #2](https://github.com/saitoomituru/KUMA800/issues/2)で追跡します。
 
 採用した構成は、クマ観測を`kuma.sqlite3`へ保存し、利用者位置をローカル`users.yaml`へ分離するものです。FastMCPはAI向けcontrol planeとread-only queryを担当し、Hueyは別service processのscheduler・queue・scraper workerを担当します。Season 1はmacOSとWindowsで使えるHueyの`thread` workerを既定とし、multiprocess非対応のWindowsへprocess worker対応を誤表示しません。AIの問い合わせ頻度と上流取得頻度を切り離し、高頻度のAI問い合わせでも上流へ同じscrapeを無駄打ちしません。保存境界は[設計判断0001](docs/decisions/0001-ローカル収集キャッシュMCP構成を採用.ja.md)、常駐process境界は[設計判断0004](docs/decisions/0004-FastMCPとHueyを常駐制御面とワーカー面に分離する.ja.md)を参照してください。
 
@@ -322,7 +322,9 @@ uv run --frozen pytest -m "not live and not physical"
 KUMA800_DATA_DIR=/tmp/kuma800-dev uv run --frozen kuma800-worker
 ```
 
-DUMMY-KUMAは5分間隔のscheduler smokeであり、実際のクマ情報ではありません。consumerをserviceとして登録するlaunchd／Windows adapter、停止・再起動・sleep復帰はまだ未実装です。
+DUMMY-KUMAは5分間隔のscheduler smokeであり、実際のクマ情報ではありません。macOS launchd生成器は実装済みですが、常設後のlogin起動・再起動・sleep復帰は未検証です。Windows service adapterは未実装です。
+
+山形県CSV adapterは県の「クマに関する情報」ページから最新の日付付き`kemonote-cleaned.csv`を発見し、毎時17分に確認します。この間隔は公開更新頻度を保証する値ではなく、Season 1の暫定負荷設定です。hostは`www.pref.yamagata.jp`のHTTPSへ固定し、redirect、timeout、Content-Type、1MiB上限、schema driftを検査します。
 
 ### FastMCP control-plane
 

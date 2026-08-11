@@ -2,5 +2,6 @@
 
 from .base import ScraperAdapter
 from .dummy import DummyKumaAdapter
+from .yamagata_csv import YamagataCsvAdapter
 
-__all__ = ["DummyKumaAdapter", "ScraperAdapter"]
+__all__ = ["DummyKumaAdapter", "ScraperAdapter", "YamagataCsvAdapter"]

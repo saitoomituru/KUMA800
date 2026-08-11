@@ -13,6 +13,7 @@ authors = [{ name = "ZeroRoomLab" }]
 dependencies = [
   "fastmcp==3.4.7",
   "huey>=2.5.3,<3",
+  "httpx==0.28.1",
   "platformdirs>=4.4.0,<5",
   "PyYAML>=6.0.2,<7",
 ]

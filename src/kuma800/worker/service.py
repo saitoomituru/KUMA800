@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from kuma800.domain import FetchRunStatus
 from kuma800.runtime import RuntimePaths
-from kuma800.scrapers import DummyKumaAdapter, ScraperAdapter
+from kuma800.scrapers import DummyKumaAdapter, ScraperAdapter, YamagataCsvAdapter
 from kuma800.storage import ObservationIngestStore, migrate_database
 
 
@@ -24,7 +24,11 @@ class ScrapeRunResult:
 def _adapters() -> dict[str, ScraperAdapter]:
     """Season 1で静的に同梱するadapter registryを返す。"""
     dummy = DummyKumaAdapter()
-    return {dummy.source.source_id: dummy}
+    yamagata = YamagataCsvAdapter()
+    return {
+        dummy.source.source_id: dummy,
+        yamagata.source.source_id: yamagata,
+    }
 
 
 def available_source_ids() -> tuple[str, ...]:
