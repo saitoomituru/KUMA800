@@ -43,9 +43,12 @@ def main() -> None:
 
     supplied = sys.argv[1:]
     requested_owner = "--periodic-owner" in supplied
-    # lockはprocess生存期間中ここで保持し続ける。consumer_main()はforegroundで
-    # blockし続けるため、この変数への参照が切れることはない。
-    periodic_owner = PeriodicOwnerLock(paths).try_acquire() if requested_owner else False
+    # lock objectをここで変数保持する。try_acquire()の戻り値（bool）だけを
+    # 束縛すると、lock objectの参照が即座に切れてGCでfdが閉じ、flockが解放
+    # されてしまう。consumer_main()はforegroundでblockし続けるため、この
+    # 変数への参照は保持され続ける。
+    periodic_owner_lock = PeriodicOwnerLock(paths)
+    periodic_owner = periodic_owner_lock.try_acquire() if requested_owner else False
 
     sys.argv = [sys.argv[0], *build_consumer_argv(supplied, periodic_owner=periodic_owner)]
     consumer_main()
