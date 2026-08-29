@@ -18,9 +18,17 @@ huey = SqliteHuey("kuma800", filename=str(paths.queue_database), results=False, 
 
 
 @huey.task()  # type: ignore[untyped-decorator]
-def scrape_source(source_id: str, run_id: str | None = None) -> dict[str, object]:
-    """指定sourceのscrapeをconsumer processで実行する。"""
-    return asdict(execute_scrape(source_id, paths=paths, run_id=run_id))
+def scrape_source(
+    source_id: str, run_id: str | None = None, retry_of_run_id: str | None = None
+) -> dict[str, object]:
+    """指定sourceのscrapeをconsumer processで実行する。
+
+    `retry_of_run_id`はstale回収後の再実行enqueue（`worker.service.recover_and_
+    retry_stale`）から渡される。手動enqueueでは指定しない。
+    """
+    return asdict(
+        execute_scrape(source_id, paths=paths, run_id=run_id, retry_of_run_id=retry_of_run_id)
+    )
 
 
 @huey.periodic_task(crontab(minute="*/5"))  # type: ignore[untyped-decorator]

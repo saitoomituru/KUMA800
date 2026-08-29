@@ -8,7 +8,8 @@ from datetime import UTC, datetime, timedelta
 from huey.bin.huey_consumer import consumer_main  # type: ignore[import-untyped]
 
 from kuma800.runtime import RuntimePaths
-from kuma800.storage import ObservationIngestStore, migrate_database
+from kuma800.storage import migrate_database
+from kuma800.worker.service import recover_and_retry_stale
 
 _HUEY_IMPORT_PATH = "kuma800.worker.huey_app.huey"
 
@@ -40,10 +41,7 @@ def main() -> None:
     paths = RuntimePaths.resolve()
     migrate_database(paths.observation_database)
     now = datetime.now(UTC)
-    ObservationIngestStore(paths.observation_database).recover_stale(
-        before=now - timedelta(minutes=15),
-        recovered_at=now,
-    )
+    recover_and_retry_stale(paths, before=now - timedelta(minutes=15), recovered_at=now)
 
     sys.argv = [sys.argv[0], *build_consumer_argv(sys.argv[1:])]
     consumer_main()
