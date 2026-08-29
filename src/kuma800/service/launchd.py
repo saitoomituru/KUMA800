@@ -41,9 +41,13 @@ def _service_payload(role: str, paths: LaunchdPaths) -> dict[str, object]:
         raise ValueError(f"unknown launchd role: {role}")
     module = "kuma800.worker.cli" if role == "worker" else "kuma800.mcp_server"
     label = f"{_LABEL_PREFIX}.{role}"
+    program_arguments = [str(paths.python_executable), "-m", module]
+    if role == "worker":
+        # launchdが監督するworkerは唯一のperiodic ownerとして明示する。
+        program_arguments.append("--periodic-owner")
     return {
         "Label": label,
-        "ProgramArguments": [str(paths.python_executable), "-m", module],
+        "ProgramArguments": program_arguments,
         "EnvironmentVariables": {"KUMA800_DATA_DIR": str(paths.data_dir)},
         "RunAtLoad": True,
         "KeepAlive": True,

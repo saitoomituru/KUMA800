@@ -28,7 +28,12 @@ def test_render_launch_agents_keeps_mcp_and_worker_separate(tmp_path: Path) -> N
 
     assert worker["Label"] == "io.zeroroomlab.kuma800.worker"
     assert mcp["Label"] == "io.zeroroomlab.kuma800.mcp"
-    assert worker["ProgramArguments"] == [str(python), "-m", "kuma800.worker.cli"]
+    assert worker["ProgramArguments"] == [
+        str(python),
+        "-m",
+        "kuma800.worker.cli",
+        "--periodic-owner",
+    ]
     assert mcp["ProgramArguments"] == [str(python), "-m", "kuma800.mcp_server"]
     assert worker["EnvironmentVariables"] == {"KUMA800_DATA_DIR": str(data)}
     assert mcp["EnvironmentVariables"] == {"KUMA800_DATA_DIR": str(data)}
