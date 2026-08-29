@@ -14,6 +14,7 @@ from kuma800.domain import (
     FetchRunStatus,
     ReviewState,
     SourceDescriptor,
+    StaleRecovery,
 )
 from kuma800.storage import FetchAlreadyRunning, ObservationIngestStore, migrate_database
 
@@ -158,7 +159,7 @@ def test_source_single_flight_and_stale_recovery(tmp_path: Path) -> None:
     assert store.recover_stale(
         before=datetime(2026, 8, 11, 12, 1, tzinfo=UTC),
         recovered_at=datetime(2026, 8, 11, 12, 2, tzinfo=UTC),
-    ) == (run_id,)
+    ) == (StaleRecovery(run_id=run_id, source_id="fake", retryable=True),)
 
     replacement = store.start_fetch("fake", started_at=_NOW, run_id="run-2")
     assert replacement == "run-2"
@@ -169,3 +170,43 @@ def test_source_single_flight_and_stale_recovery(tmp_path: Path) -> None:
         ).fetchone() == (FetchRunStatus.STALE.value, "STALE_RECOVERY")
     finally:
         connection.close()
+
+
+def test_start_fetch_records_retry_lineage(tmp_path: Path) -> None:
+    """再実行runは旧runへ`retry_of_run_id`で追跡できる。"""
+    store, database_path, run_id = _prepared_store(tmp_path)
+    store.recover_stale(
+        before=datetime(2026, 8, 11, 12, 1, tzinfo=UTC),
+        recovered_at=datetime(2026, 8, 11, 12, 2, tzinfo=UTC),
+    )
+
+    retry_run_id = store.start_fetch(
+        "fake", started_at=_NOW, run_id="run-2", retry_of_run_id=run_id
+    )
+
+    connection = sqlite3.connect(database_path)
+    try:
+        assert connection.execute(
+            "SELECT retry_of_run_id FROM fetch_runs WHERE run_id = ?", (retry_run_id,)
+        ).fetchone() == (run_id,)
+    finally:
+        connection.close()
+
+
+def test_recover_stale_does_not_mark_retry_of_a_retry_as_retryable(tmp_path: Path) -> None:
+    """再実行run自身がstaleになっても、無制限retryにならないよう再enqueue対象にしない。"""
+    store, _, run_id = _prepared_store(tmp_path)
+    store.recover_stale(
+        before=datetime(2026, 8, 11, 12, 1, tzinfo=UTC),
+        recovered_at=datetime(2026, 8, 11, 12, 2, tzinfo=UTC),
+    )
+    retry_run_id = store.start_fetch(
+        "fake", started_at=_NOW, run_id="run-2", retry_of_run_id=run_id
+    )
+
+    recoveries = store.recover_stale(
+        before=datetime(2026, 8, 11, 12, 1, tzinfo=UTC),
+        recovered_at=datetime(2026, 8, 11, 12, 3, tzinfo=UTC),
+    )
+
+    assert recoveries == (StaleRecovery(run_id=retry_run_id, source_id="fake", retryable=False),)

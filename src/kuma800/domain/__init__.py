@@ -8,6 +8,7 @@ from .models import (
     ReviewState,
     ScrapeBatch,
     SourceDescriptor,
+    StaleRecovery,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "ReviewState",
     "ScrapeBatch",
     "SourceDescriptor",
+    "StaleRecovery",
 ]

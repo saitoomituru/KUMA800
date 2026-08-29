@@ -139,6 +139,15 @@ class IngestResult:
 
 
 @dataclass(frozen=True, slots=True)
+class StaleRecovery:
+    """STARTEDのまま放置されSTALEへ遷移したfetch runの回収結果。"""
+
+    run_id: str
+    source_id: str
+    retryable: bool
+
+
+@dataclass(frozen=True, slots=True)
 class ScrapeBatch:
     """一回の取得artifactと正規化済み候補。"""
 

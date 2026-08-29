@@ -12,6 +12,7 @@ from kuma800.domain import (
     FetchRunStatus,
     IngestResult,
     SourceDescriptor,
+    StaleRecovery,
 )
 
 from .migrations import _connect_writable
@@ -66,8 +67,13 @@ class ObservationIngestStore:
         *,
         started_at: datetime,
         run_id: str | None = None,
+        retry_of_run_id: str | None = None,
     ) -> str:
-        """出典取得をSTARTEDとして記録する。"""
+        """出典取得をSTARTEDとして記録する。
+
+        `retry_of_run_id`を渡すと、stale回収後の再実行runとして旧runへ追跡可能な
+        関係を残す。旧run自体は`STALE`のまま保存し、書き換えない。
+        """
         resolved_run_id = run_id or str(uuid4())
         connection = _connect_writable(self._database_path)
         try:
@@ -76,14 +82,17 @@ class ObservationIngestStore:
                 try:
                     connection.execute(
                         """
-                        INSERT INTO fetch_runs(run_id, source_id, status, started_at)
-                        VALUES (?, ?, ?, ?)
+                        INSERT INTO fetch_runs(
+                            run_id, source_id, status, started_at, retry_of_run_id
+                        )
+                        VALUES (?, ?, ?, ?, ?)
                         """,
                         (
                             resolved_run_id,
                             source_id,
                             FetchRunStatus.STARTED.value,
                             started_at_text,
+                            retry_of_run_id,
                         ),
                     )
                 except sqlite3.IntegrityError as error:
@@ -177,27 +186,39 @@ class ObservationIngestStore:
         finally:
             connection.close()
 
-    def recover_stale(self, *, before: datetime, recovered_at: datetime) -> tuple[str, ...]:
-        """期限より古いSTARTED runをSTALEへ遷移させる。"""
+    def recover_stale(
+        self, *, before: datetime, recovered_at: datetime
+    ) -> tuple[StaleRecovery, ...]:
+        """期限より古いSTARTED runをSTALEへ遷移させる。
+
+        `retryable`は、そのrun自体が既に別runの再実行（`retry_of_run_id`が設定
+        済み）ではないことを示す。再実行runがさらにhard-killされても、その先の
+        自動再実行は行わない（無制限retryを避けるための一段深さ制限）。
+        """
         connection = _connect_writable(self._database_path)
-        stale_run_ids: list[str] = []
+        recoveries: list[StaleRecovery] = []
         try:
             with connection:
                 rows = connection.execute(
                     """
-                    SELECT run_id FROM fetch_runs
+                    SELECT run_id, source_id, retry_of_run_id FROM fetch_runs
                     WHERE status = 'STARTED' AND started_at < ?
                     ORDER BY started_at, run_id
                     """,
                     (_as_utc_text(before),),
                 ).fetchall()
-                for row in rows:
-                    run_id = str(row[0])
-                    self._finish_stale(connection, run_id, recovered_at)
-                    stale_run_ids.append(run_id)
+                for run_id, source_id, retry_of_run_id in rows:
+                    self._finish_stale(connection, str(run_id), recovered_at)
+                    recoveries.append(
+                        StaleRecovery(
+                            run_id=str(run_id),
+                            source_id=str(source_id),
+                            retryable=retry_of_run_id is None,
+                        )
+                    )
         finally:
             connection.close()
-        return tuple(stale_run_ids)
+        return tuple(recoveries)
 
     @staticmethod
     def _finish_stale(connection: sqlite3.Connection, run_id: str, recovered_at: datetime) -> None:
