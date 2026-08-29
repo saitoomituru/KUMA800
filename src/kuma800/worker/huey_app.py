@@ -12,7 +12,9 @@ from .service import execute_scrape
 
 paths = RuntimePaths.resolve()
 paths.data_dir.mkdir(parents=True, exist_ok=True)
-huey = SqliteHuey("kuma800", filename=str(paths.queue_database), results=True, utc=True)
+# 追跡の正本はfetch_runs.run_id（観測SQLite側）。Huey result storeは誰も読まない
+# ため、未回収resultの蓄積を避け、正本を二重に持たせない。
+huey = SqliteHuey("kuma800", filename=str(paths.queue_database), results=False, utc=True)
 
 
 @huey.task()  # type: ignore[untyped-decorator]
