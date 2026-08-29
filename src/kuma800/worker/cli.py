@@ -9,22 +9,20 @@ from huey.bin.huey_consumer import consumer_main  # type: ignore[import-untyped]
 
 from kuma800.runtime import RuntimePaths
 from kuma800.storage import migrate_database
+from kuma800.worker.periodic_owner import PeriodicOwnerLock
 from kuma800.worker.service import recover_and_retry_stale
 
 _HUEY_IMPORT_PATH = "kuma800.worker.huey_app.huey"
 
 
-def build_consumer_argv(supplied: list[str]) -> list[str]:
+def build_consumer_argv(supplied: list[str], *, periodic_owner: bool) -> list[str]:
     """huey_consumerへ渡すargvを組み立てる。
 
-    periodic taskのenqueue元を増やさないため、既定ではperiodic schedulerを無効化
-    する（huey_consumerの`-n`相当）。ownerにする場合だけ`--periodic-owner`を明示
-    する。
+    `periodic_owner`は`PeriodicOwnerLock`で実際に確定した結果を渡す。`--periodic-
+    owner`が指定されただけでは足りない。file lockを取れなかったprocessは、
+    複数workerが同時に指定していてもnon-ownerへ縮退させる。
     """
-    remaining = list(supplied)
-    periodic_owner = "--periodic-owner" in remaining
-    if periodic_owner:
-        remaining = [argument for argument in remaining if argument != "--periodic-owner"]
+    remaining = [argument for argument in supplied if argument != "--periodic-owner"]
 
     defaults: list[str] = []
     if "-k" not in remaining and "--worker-type" not in remaining:
@@ -43,7 +41,13 @@ def main() -> None:
     now = datetime.now(UTC)
     recover_and_retry_stale(paths, before=now - timedelta(minutes=15), recovered_at=now)
 
-    sys.argv = [sys.argv[0], *build_consumer_argv(sys.argv[1:])]
+    supplied = sys.argv[1:]
+    requested_owner = "--periodic-owner" in supplied
+    # lockはprocess生存期間中ここで保持し続ける。consumer_main()はforegroundで
+    # blockし続けるため、この変数への参照が切れることはない。
+    periodic_owner = PeriodicOwnerLock(paths).try_acquire() if requested_owner else False
+
+    sys.argv = [sys.argv[0], *build_consumer_argv(supplied, periodic_owner=periodic_owner)]
     consumer_main()
 
 

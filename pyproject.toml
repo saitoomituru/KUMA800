@@ -16,6 +16,7 @@ dependencies = [
   "httpx==0.28.1",
   "platformdirs>=4.4.0,<5",
   "PyYAML>=6.0.2,<7",
+  "filelock>=3.32.4,<4",
 ]
 
 [project.scripts]
