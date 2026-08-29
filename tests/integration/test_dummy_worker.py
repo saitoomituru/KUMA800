@@ -118,3 +118,31 @@ def test_huey_consumer_process_moves_queue_to_observation_store(tmp_path: Path) 
         ).fetchone() == ("process-run", "SUCCEEDED")
     finally:
         connection.close()
+
+
+@pytest.mark.process_smoke
+def test_periodic_owner_flag_starts_without_error(tmp_path: Path) -> None:
+    """launchdが渡す`--periodic-owner`をconsumerプロセスが正しく解釈する。"""
+    environment = os.environ.copy()
+    environment["KUMA800_DATA_DIR"] = str(tmp_path)
+    consumer = subprocess.Popen(
+        [sys.executable, "-m", "kuma800.worker.cli", "-w", "1", "-k", "thread", "--periodic-owner"],
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if consumer.poll() is not None:
+                stdout, stderr = consumer.communicate(timeout=1)
+                pytest.fail(f"consumer exited early: {stdout}\n{stderr}")
+            time.sleep(0.1)
+    finally:
+        consumer.terminate()
+        try:
+            consumer.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            consumer.kill()
+            consumer.communicate(timeout=5)
