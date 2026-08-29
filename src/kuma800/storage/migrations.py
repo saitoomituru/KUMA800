@@ -141,7 +141,18 @@ _SINGLE_FLIGHT_SCHEMA = Migration(
     ),
 )
 
-_MIGRATIONS = (_INITIAL_SCHEMA, _SINGLE_FLIGHT_SCHEMA)
+_RUN_LINEAGE_SCHEMA = Migration(
+    version=3,
+    name="fetch_run_retry_lineage",
+    statements=(
+        """
+        ALTER TABLE fetch_runs
+        ADD COLUMN retry_of_run_id TEXT REFERENCES fetch_runs(run_id)
+        """,
+    ),
+)
+
+_MIGRATIONS = (_INITIAL_SCHEMA, _SINGLE_FLIGHT_SCHEMA, _RUN_LINEAGE_SCHEMA)
 
 
 def _connect_writable(database_path: Path) -> sqlite3.Connection:
