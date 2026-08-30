@@ -21,6 +21,17 @@ class FetchRunStatus(StrEnum):
     STALE = "STALE"
 
 
+class FailureCategory(StrEnum):
+    """取得失敗が自動retry可能か人間確認が必要かの分類。
+
+    未知の例外は`TERMINAL`（人間確認が必要）へ丸める。一時故障を推定して
+    無制限retryへ倒す既定は取らない。
+    """
+
+    RETRYABLE = "retryable"
+    TERMINAL = "terminal"
+
+
 class AssertionKind(StrEnum):
     """観測へ追加する出典付き主張の種類。"""
 
