@@ -8,14 +8,18 @@ import socket
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
+from kuma800.domain import FailureCategory, FetchRunStatus
 from kuma800.mcp_server import create_server
 from kuma800.runtime import RuntimePaths
+from kuma800.scrapers import DummyKumaAdapter
+from kuma800.storage import ObservationIngestStore, migrate_database
 from kuma800.worker import execute_scrape
 
 
@@ -74,6 +78,41 @@ async def test_mcp_tools_keep_observations_read_only_and_users_writable(tmp_path
 
         deleted = await client.call_tool("kuma.users.delete", {"user_id": "local-user"})
         assert deleted.data["deleted"]["user_id"] == "local-user"
+
+
+@pytest.mark.asyncio
+async def test_mcp_scrape_request_reports_backoff_instead_of_silent_enqueue(
+    tmp_path: Path,
+) -> None:
+    """backoff中はenqueueせず、依頼した側へBACKOFFと解除予定時刻を返す。"""
+    paths = RuntimePaths(tmp_path)
+    migrate_database(paths.observation_database)
+    store = ObservationIngestStore(paths.observation_database)
+    now = datetime.now(UTC)
+    store.register_source(DummyKumaAdapter().source, created_at=now)
+    run_id = store.start_fetch("dummy-kuma", started_at=now)
+    store.finish_fetch(
+        run_id,
+        status=FetchRunStatus.FAILED,
+        finished_at=now,
+        error_code="ConnectTimeout",
+        failure_category=FailureCategory.RETRYABLE,
+    )
+
+    queued: list[str] = []
+
+    def enqueue(source_id: str) -> str:
+        queued.append(source_id)
+        return "unused"
+
+    server = create_server(paths=paths, enqueue_source=enqueue)
+    async with Client(server) as client:
+        request = await client.call_tool("kuma.scrape.request", {"source_id": "dummy-kuma"})
+
+    assert request.data["status"] == "BACKOFF"
+    assert request.data["run_id"] is None
+    assert request.data["backoff_until"] is not None
+    assert queued == []
 
 
 @pytest.mark.asyncio

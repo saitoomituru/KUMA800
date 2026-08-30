@@ -11,7 +11,12 @@ from uuid import uuid4
 from fastmcp import FastMCP
 
 from kuma800.runtime import RuntimePaths
-from kuma800.storage import observation_status, recent_fetch_runs, recent_sightings
+from kuma800.storage import (
+    ObservationIngestStore,
+    observation_status,
+    recent_fetch_runs,
+    recent_sightings,
+)
 from kuma800.user_config import UserLocation, UserLocationStore
 from kuma800.worker import available_source_ids
 
@@ -69,10 +74,24 @@ def create_server(
         return recent_fetch_runs(resolved_paths.observation_database, limit=limit)
 
     @server.tool(name="kuma.scrape.request")
-    def scrape_request(source_id: str) -> dict[str, str]:
-        """別Huey workerへscrapeを依頼し、待たずにfetch run IDを返す。"""
+    def scrape_request(source_id: str) -> dict[str, object]:
+        """別Huey workerへscrapeを依頼し、待たずにfetch run IDを返す。
+
+        backoff中（Issue #7）はenqueueせず、その旨と解除予定時刻を返す。
+        enqueueだけしてtaskが黙ってbackoffで無視されるより、依頼した側が
+        現状を確認できることを優先する。
+        """
         if source_id not in available_source_ids():
             raise ValueError(f"unknown scraper source: {source_id}")
+        store = ObservationIngestStore(resolved_paths.observation_database)
+        backoff_until = store.backoff_until_for(source_id)
+        if backoff_until is not None and datetime.now(UTC) < backoff_until:
+            return {
+                "source_id": source_id,
+                "run_id": None,
+                "status": "BACKOFF",
+                "backoff_until": backoff_until.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+            }
         return {"source_id": source_id, "run_id": enqueue(source_id), "status": "QUEUED"}
 
     @server.tool(name="kuma.users.list")
