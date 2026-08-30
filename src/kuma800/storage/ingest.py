@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
 from kuma800.domain import (
+    INDEFINITE_BACKOFF_SECONDS,
     CandidateObservation,
+    FailureCategory,
     FetchRunStatus,
     IngestResult,
     SourceDescriptor,
     StaleRecovery,
+    compute_backoff_seconds,
 )
 
 from .migrations import _connect_writable
@@ -128,20 +131,28 @@ class ObservationIngestStore:
         content_hash: str | None = None,
         error_code: str | None = None,
         error_detail: str | None = None,
+        failure_category: FailureCategory | None = None,
     ) -> None:
-        """STARTED runを終端状態へ遷移させる。"""
+        """STARTED runを終端状態へ遷移させる。
+
+        `failure_category`はSUCCEEDED以外の場合だけ意味を持つ。`RETRYABLE`
+        は上限付き指数backoffを、`TERMINAL`は事実上の無期限backoffを
+        `source_state.backoff_until`へ設定する。省略時（None）は既存の
+        backoff_untilを変更しない。
+        """
         if status is FetchRunStatus.STARTED:
             raise ValueError("finish_fetch requires a terminal status")
         connection = _connect_writable(self._database_path)
         try:
             with connection:
                 current = connection.execute(
-                    "SELECT status FROM fetch_runs WHERE run_id = ?", (run_id,)
+                    "SELECT status, source_id FROM fetch_runs WHERE run_id = ?", (run_id,)
                 ).fetchone()
                 if current is None:
                     raise KeyError(f"unknown fetch run: {run_id}")
                 if current[0] != FetchRunStatus.STARTED.value:
                     raise ValueError(f"fetch run is already terminal: {run_id}")
+                source_id = str(current[1])
                 connection.execute(
                     """
                     UPDATE fetch_runs
@@ -165,23 +176,37 @@ class ObservationIngestStore:
                         UPDATE source_state
                         SET last_succeeded_at = ?, consecutive_failures = 0,
                             backoff_until = NULL, last_error_code = NULL
-                        WHERE source_id = (
-                            SELECT source_id FROM fetch_runs WHERE run_id = ?
-                        )
+                        WHERE source_id = ?
                         """,
-                        (_as_utc_text(finished_at), run_id),
+                        (_as_utc_text(finished_at), source_id),
                     )
                 else:
+                    failures_row = connection.execute(
+                        "SELECT consecutive_failures FROM source_state WHERE source_id = ?",
+                        (source_id,),
+                    ).fetchone()
+                    new_failures = (int(failures_row[0]) if failures_row is not None else 0) + 1
+                    backoff_seconds: float | None
+                    if failure_category is FailureCategory.TERMINAL:
+                        backoff_seconds = INDEFINITE_BACKOFF_SECONDS
+                    elif failure_category is FailureCategory.RETRYABLE:
+                        backoff_seconds = compute_backoff_seconds(new_failures)
+                    else:
+                        backoff_seconds = None
+                    backoff_until_text = (
+                        _as_utc_text(finished_at + timedelta(seconds=backoff_seconds))
+                        if backoff_seconds is not None
+                        else None
+                    )
                     connection.execute(
                         """
                         UPDATE source_state
                         SET consecutive_failures = consecutive_failures + 1,
-                            last_error_code = ?
-                        WHERE source_id = (
-                            SELECT source_id FROM fetch_runs WHERE run_id = ?
-                        )
+                            last_error_code = ?,
+                            backoff_until = COALESCE(?, backoff_until)
+                        WHERE source_id = ?
                         """,
-                        (error_code or status.value, run_id),
+                        (error_code or status.value, backoff_until_text, source_id),
                     )
         finally:
             connection.close()
@@ -219,6 +244,19 @@ class ObservationIngestStore:
         finally:
             connection.close()
         return tuple(recoveries)
+
+    def backoff_until_for(self, source_id: str) -> datetime | None:
+        """該当sourceの現在のbackoff終了時刻を返す（未設定・未登録はNone）。"""
+        connection = _connect_writable(self._database_path)
+        try:
+            row = connection.execute(
+                "SELECT backoff_until FROM source_state WHERE source_id = ?", (source_id,)
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is None or row[0] is None:
+            return None
+        return datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
 
     @staticmethod
     def _finish_stale(connection: sqlite3.Connection, run_id: str, recovered_at: datetime) -> None:

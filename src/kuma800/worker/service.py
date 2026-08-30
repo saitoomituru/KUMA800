@@ -10,6 +10,7 @@ from kuma800.domain import FetchRunStatus
 from kuma800.runtime import RuntimePaths
 from kuma800.scrapers import DummyKumaAdapter, ScraperAdapter, YamagataCsvAdapter
 from kuma800.storage import ObservationIngestStore, migrate_database
+from kuma800.worker.failure_classification import classify_failure
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +21,16 @@ class ScrapeRunResult:
     source_id: str
     candidate_count: int
     inserted_count: int
+
+
+class SourceInBackoff(RuntimeError):
+    """backoff中のsourceへ上流接続しなかったことを示す。"""
+
+    def __init__(self, source_id: str, backoff_until: datetime) -> None:
+        """gateしたsourceと解除予定時刻を保持する。"""
+        self.source_id = source_id
+        self.backoff_until = backoff_until
+        super().__init__(f"source is in backoff until {backoff_until.isoformat()}: {source_id}")
 
 
 def _adapters() -> dict[str, ScraperAdapter]:
@@ -45,7 +56,11 @@ def execute_scrape(
     run_id: str | None = None,
     retry_of_run_id: str | None = None,
 ) -> ScrapeRunResult:
-    """一つのsourceを取得し、出典付き候補を冪等appendする。"""
+    """一つのsourceを取得し、出典付き候補を冪等appendする。
+
+    backoff中（`source_state.backoff_until`が未来）の場合は上流へ接続せず
+    `SourceInBackoff`を送出する。fetch_runは作らない（Issue #7）。
+    """
     resolved_paths = paths or RuntimePaths.resolve()
     fetched_at = now or datetime.now(UTC)
     adapter = _adapters().get(source_id)
@@ -54,6 +69,10 @@ def execute_scrape(
 
     migrate_database(resolved_paths.observation_database)
     store = ObservationIngestStore(resolved_paths.observation_database)
+    backoff_until = store.backoff_until_for(source_id)
+    if backoff_until is not None and fetched_at < backoff_until:
+        raise SourceInBackoff(source_id, backoff_until)
+
     store.register_source(adapter.source, created_at=fetched_at)
     resolved_run_id = store.start_fetch(
         source_id, started_at=fetched_at, run_id=run_id, retry_of_run_id=retry_of_run_id
@@ -74,6 +93,7 @@ def execute_scrape(
             status=FetchRunStatus.FAILED,
             finished_at=datetime.now(UTC),
             error_code=type(error).__name__,
+            failure_category=classify_failure(error),
         )
         raise
 

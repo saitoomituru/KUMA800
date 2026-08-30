@@ -3,7 +3,7 @@
 import hashlib
 import sqlite3
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -11,11 +11,13 @@ import pytest
 from kuma800.domain import (
     AssertionKind,
     CandidateObservation,
+    FailureCategory,
     FetchRunStatus,
     ReviewState,
     SourceDescriptor,
     StaleRecovery,
 )
+from kuma800.domain.backoff import INDEFINITE_BACKOFF_SECONDS, INITIAL_BACKOFF_SECONDS
 from kuma800.storage import FetchAlreadyRunning, ObservationIngestStore, migrate_database
 
 _NOW = datetime(2026, 8, 11, 12, 0, tzinfo=UTC)
@@ -210,3 +212,87 @@ def test_recover_stale_does_not_mark_retry_of_a_retry_as_retryable(tmp_path: Pat
     )
 
     assert recoveries == (StaleRecovery(run_id=retry_run_id, source_id="fake", retryable=False),)
+
+
+def test_finish_fetch_sets_bounded_backoff_for_retryable_failure(tmp_path: Path) -> None:
+    """RETRYABLE失敗はfinished_atからinitial delay分だけbackoff_untilを進める。"""
+    store, database_path, run_id = _prepared_store(tmp_path)
+
+    store.finish_fetch(
+        run_id,
+        status=FetchRunStatus.FAILED,
+        finished_at=_NOW,
+        error_code="ConnectTimeout",
+        failure_category=FailureCategory.RETRYABLE,
+    )
+
+    assert store.backoff_until_for("fake") == _NOW + timedelta(seconds=INITIAL_BACKOFF_SECONDS)
+    connection = sqlite3.connect(database_path)
+    try:
+        assert connection.execute(
+            "SELECT consecutive_failures FROM source_state WHERE source_id = 'fake'"
+        ).fetchone() == (1,)
+    finally:
+        connection.close()
+
+
+def test_finish_fetch_sets_indefinite_backoff_for_terminal_failure(tmp_path: Path) -> None:
+    """TERMINAL失敗は事実上の無期限backoffを設定し、無制限retryしない。"""
+    store, _, run_id = _prepared_store(tmp_path)
+
+    store.finish_fetch(
+        run_id,
+        status=FetchRunStatus.FAILED,
+        finished_at=_NOW,
+        error_code="schema_drift",
+        failure_category=FailureCategory.TERMINAL,
+    )
+
+    assert store.backoff_until_for("fake") == _NOW + timedelta(seconds=INDEFINITE_BACKOFF_SECONDS)
+
+
+def test_finish_fetch_without_failure_category_leaves_backoff_unchanged(tmp_path: Path) -> None:
+    """failure_category省略時は既存のbackoff_untilを変更しない。"""
+    store, database_path, run_id = _prepared_store(tmp_path)
+
+    store.finish_fetch(
+        run_id,
+        status=FetchRunStatus.FAILED,
+        finished_at=_NOW,
+        error_code="unclassified",
+    )
+
+    assert store.backoff_until_for("fake") is None
+
+
+def test_finish_fetch_success_clears_backoff(tmp_path: Path) -> None:
+    """成功時はfailure count・backoffをclearする。"""
+    store, _, run_id = _prepared_store(tmp_path)
+    store.finish_fetch(
+        run_id,
+        status=FetchRunStatus.FAILED,
+        finished_at=_NOW,
+        error_code="ConnectTimeout",
+        failure_category=FailureCategory.RETRYABLE,
+    )
+    assert store.backoff_until_for("fake") is not None
+
+    retry_run_id = store.start_fetch(
+        "fake", started_at=_NOW, run_id="run-2", retry_of_run_id=run_id
+    )
+    store.finish_fetch(
+        retry_run_id,
+        status=FetchRunStatus.SUCCEEDED,
+        finished_at=_NOW,
+        final_url="https://example.invalid/kuma",
+        content_hash=_hash("artifact"),
+    )
+
+    assert store.backoff_until_for("fake") is None
+
+
+def test_backoff_until_for_unknown_source_is_none(tmp_path: Path) -> None:
+    """未登録sourceのbackoff問い合わせはNoneを返す。"""
+    store, _, _run_id = _prepared_store(tmp_path)
+
+    assert store.backoff_until_for("does-not-exist") is None
