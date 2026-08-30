@@ -7,8 +7,11 @@ from .service import (
     execute_scrape,
     recover_and_retry_stale,
 )
+from .subprocess_runner import AdapterSubprocessError, AdapterTimedOut
 
 __all__ = [
+    "AdapterSubprocessError",
+    "AdapterTimedOut",
     "ScrapeRunResult",
     "SourceInBackoff",
     "available_source_ids",

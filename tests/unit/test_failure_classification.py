@@ -7,6 +7,7 @@ import pytest
 from kuma800.domain import FailureCategory
 from kuma800.scrapers.http import PublicFetchError
 from kuma800.worker.failure_classification import classify_failure
+from kuma800.worker.subprocess_runner import AdapterTimedOut
 
 
 @pytest.mark.parametrize(
@@ -17,6 +18,7 @@ from kuma800.worker.failure_classification import classify_failure
         PublicFetchError("x", reason="http_status", status_code=429),
         PublicFetchError("x", reason="http_status", status_code=500),
         PublicFetchError("x", reason="http_status", status_code=503),
+        AdapterTimedOut("dummy-kuma", 60.0),
     ],
 )
 def test_temporary_failures_are_retryable(error: PublicFetchError) -> None:

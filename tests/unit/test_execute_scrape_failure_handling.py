@@ -11,6 +11,7 @@ import pytest
 import kuma800.worker.service as service
 from kuma800.domain import ScrapeBatch, SourceDescriptor
 from kuma800.runtime import RuntimePaths
+from kuma800.scrapers.base import ScraperAdapter
 from kuma800.scrapers.http import PublicFetchError
 from kuma800.storage import ObservationIngestStore
 from kuma800.worker.service import SourceInBackoff, execute_scrape
@@ -41,6 +42,17 @@ def _patch_adapter(monkeypatch: pytest.MonkeyPatch, adapter: _FailingAdapter) ->
     monkeypatch.setattr(service, "_adapters", lambda: {_SOURCE_ID: adapter})
 
 
+def _in_process_fetch(adapter: ScraperAdapter, fetched_at: datetime) -> ScrapeBatch:
+    """subprocess隔離（Issue #8）を経由せず、fake adapterをin-processで直接呼ぶ。
+
+    productionの既定はsubprocess経由（`kuma800.worker.subprocess_runner`）だが、
+    子processは`worker.service._adapters`のmonkeypatchを認識できない。ここで
+    検証したいのはfailure分類・backoff配線（Issue #7）であり、subprocess隔離
+    機構そのもの（Issue #8）は別testで検証する。
+    """
+    return adapter.fetch(fetched_at=fetched_at)
+
+
 def test_retryable_failure_sets_bounded_backoff_end_to_end(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -49,7 +61,7 @@ def test_retryable_failure_sets_bounded_backoff_end_to_end(
     _patch_adapter(monkeypatch, _FailingAdapter(PublicFetchError("x", reason="timeout")))
 
     with pytest.raises(PublicFetchError):
-        execute_scrape(_SOURCE_ID, paths=paths, now=_NOW)
+        execute_scrape(_SOURCE_ID, paths=paths, now=_NOW, fetch=_in_process_fetch)
 
     store = ObservationIngestStore(paths.observation_database)
     backoff_until = store.backoff_until_for(_SOURCE_ID)
@@ -65,7 +77,7 @@ def test_terminal_failure_sets_indefinite_backoff_end_to_end(
     _patch_adapter(monkeypatch, _FailingAdapter(ValueError("Yamagata CSV schema changed")))
 
     with pytest.raises(ValueError, match="schema changed"):
-        execute_scrape(_SOURCE_ID, paths=paths, now=_NOW)
+        execute_scrape(_SOURCE_ID, paths=paths, now=_NOW, fetch=_in_process_fetch)
 
     store = ObservationIngestStore(paths.observation_database)
     backoff_until = store.backoff_until_for(_SOURCE_ID)
@@ -82,7 +94,7 @@ def test_backoff_gate_refuses_upstream_contact_without_creating_fetch_run(
     _patch_adapter(monkeypatch, adapter)
 
     with pytest.raises(PublicFetchError):
-        execute_scrape(_SOURCE_ID, paths=paths, now=_NOW)
+        execute_scrape(_SOURCE_ID, paths=paths, now=_NOW, fetch=_in_process_fetch)
 
     def _fail_if_called(*, fetched_at: datetime) -> ScrapeBatch:
         pytest.fail("adapter.fetch() must not be called while in backoff")
@@ -90,7 +102,7 @@ def test_backoff_gate_refuses_upstream_contact_without_creating_fetch_run(
     monkeypatch.setattr(adapter, "fetch", _fail_if_called)
 
     with pytest.raises(SourceInBackoff) as captured:
-        execute_scrape(_SOURCE_ID, paths=paths, now=_NOW)
+        execute_scrape(_SOURCE_ID, paths=paths, now=_NOW, fetch=_in_process_fetch)
     assert captured.value.source_id == _SOURCE_ID
 
     store = ObservationIngestStore(paths.observation_database)
@@ -119,7 +131,7 @@ def test_success_after_backoff_expires_clears_state(
     failing = _FailingAdapter(PublicFetchError("x", reason="timeout"))
     _patch_adapter(monkeypatch, failing)
     with pytest.raises(PublicFetchError):
-        execute_scrape(_SOURCE_ID, paths=paths, now=_NOW)
+        execute_scrape(_SOURCE_ID, paths=paths, now=_NOW, fetch=_in_process_fetch)
 
     batch = ScrapeBatch(
         final_url="https://example.invalid/kuma800/failing-fixture",
@@ -137,7 +149,7 @@ def test_success_after_backoff_expires_clears_state(
     store = ObservationIngestStore(paths.observation_database)
     much_later = _NOW.replace(year=_NOW.year + 1)
 
-    result = execute_scrape(_SOURCE_ID, paths=paths, now=much_later)
+    result = execute_scrape(_SOURCE_ID, paths=paths, now=much_later, fetch=_in_process_fetch)
 
     assert result.source_id == _SOURCE_ID
     assert store.backoff_until_for(_SOURCE_ID) is None
