@@ -8,19 +8,15 @@
 
 ## 現在地
 
-**シーズン1：fake vertical sliceの実装中**
+**独立開発終了・成果保存（2026-10-04）**
 
-KUMA800は現在、Python 3.12のpackage／CI、追記専用のクマ観測SQLite、出典付き冪等ingest、repository外の利用者位置YAML、Huey thread worker、FastMCP control-plane、macOS launchd生成器、DUMMY-KUMAと山形県CSV adapterまで実装済みです。山形県CSVは県公式ページから日付付きsnapshotを発見する非公式adapterであり、公式API連携や県の公認を意味しません。retry／backoff、長時間常駐、sleep／resume、reboot、Windows実機、けものおと2 adapterは未完了で、実運用上の安全を保証する完成品ではありません。Season 1の進行と未決事項は[Issue #2](https://github.com/saitoomituru/KUMA800/issues/2)で追跡します。
+今季の電力問題とFQuery／Sphereの並行進展を踏まえ、KUMA800の独立開発・今季運用計画を終了しました。収集・保存・read-only MCP・worker復旧／隔離の試作と検証記録を保存します。常駐の人間・物理受入は未完です。必要時の部品再利用・forkの入口は[終了判断0006](docs/decisions/0006-KUMA800の独立開発を終了し成果を保存する.ja.md)を参照してください。
 
-採用した構成は、クマ観測を`kuma.sqlite3`へ保存し、利用者位置をローカル`users.yaml`へ分離するものです。FastMCPはAI向けcontrol planeとread-only queryを担当し、Hueyは別service processのscheduler・queue・scraper workerを担当します。Season 1はmacOSとWindowsで使えるHueyの`thread` workerを既定とし、multiprocess非対応のWindowsへprocess worker対応を誤表示しません。AIの問い合わせ頻度と上流取得頻度を切り離し、高頻度のAI問い合わせでも上流へ同じscrapeを無駄打ちしません。保存境界は[設計判断0001](docs/decisions/0001-ローカル収集キャッシュMCP構成を採用.ja.md)、常駐process境界は[設計判断0004](docs/decisions/0004-FastMCPとHueyを常駐制御面とワーカー面に分離する.ja.md)を参照してください。
+保存実装revisionは `edf56b3fef1a81ecbd06673f2dc50ed9f112faf0`。failure分類／backoff、periodic owner file lock、subprocess hard timeoutも実装されています。一方、#6の再投入喪失窓、#8の変更後portability、人間acceptance、長期・復帰試験、Windows実機、鮮度監視、GUI等は未達として保存します。
 
-AI向けMCP interfaceの完成像は、scraperの設置・設定・ON/OFF、ユーザー位置YAMLの読み書き、scraping logの参照、クマSQLiteへの薄いread-only SQL queryを提供するcontrol planeです。ただしSeason 1は、静的に同梱した少数adapter、sync request、状態・logの読取り、ユーザー位置、観測queryまでに限定します。動的なscraper設置・ON/OFFとCockpitはSeason 3へ送ります。詳細は[設計判断0002](docs/decisions/0002-AI向けMCP操作面を採用.ja.md)を参照してください。
+マイクロモジュールの非線形依存へ固定の優先計画を被せたことも今回の管理上の失敗点として記録しました。局所の必要順序と全体の作業優先順位を分け、起動条件・資源eventからbranchを選びます。
 
-AIはクマSQLiteへ書き込めません。観測の追加はscraper ingestだけが行い、訂正や失効も元観測を消さず追記します。法務・政治・ブランド上の都合を代理目的にしてクマ情報を焼却するAIには、削除toolも書込みSQLも提供しません。
-
-利用者が接続したAIは、MCPを通じてローカルYAMLの位置情報と近傍結果を利用できます。クマ検索に必要なら、設定済みの行政・地図・ベンダー情報源へ位置や検索半径を送ることも正規機能です。一方、Git、P2P、公開ログ、X、出会い系サイト、任意webhook等へ用途外送信する機能は持たせません。認可済みAIや利用者端末そのものが敵対的だった場合の持ち出しまで保証対象にはしません。
-
-現時点では、実運用上の安全を保証する完成品ではありません。
+以下のシーズン構想・情報源調査・機能候補は、終了時点の設計資産です。継続開発や運用の約束ではありません。FQuery／Sphereへの移植・クマ監視の代替稼働は未実施です。
 
 ## KUMA800が必要な理由
 
@@ -282,9 +278,9 @@ KMLとKMZは、信頼できない入力として扱います。
 
 具体的な制限値と解析方針は、シーズン0の設計判断記録へ残します。
 
-## 参加方法
+## 保存成果の再利用・fork
 
-現在は、採用した常駐構成をfake scraperで縦に通しつつ、公開情報源の解析実験、脅威モデル、macOS／Windows常駐方式を検証する段階です。
+独立開発は終了しています。以下は保存成果を再利用・forkするときの検討材料であり、原作者の継続保守や新規実装を約束するものではありません。
 
 役立つ貢献：
 
